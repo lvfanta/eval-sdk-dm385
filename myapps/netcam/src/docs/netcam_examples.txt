@@ -1,0 +1,5 @@
+Simple network camera
+
+Any laptop computer, or desktop computer with a USB camera, that is
+able to run python and GStreamer can be turned into a network camera.
+

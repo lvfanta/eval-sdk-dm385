@@ -1,0 +1,22 @@
+AUTOTOOLS_BUILD_DIR?=$(HOST_ARCH)
+AUTOTOOLS_PARAMS+=--prefix=$(LOCALDIR)
+AUTOTOOLS_HOST=
+CONFIG_SITE=
+
+include $(CLASSES)/autotools.defs
+
+.PHONY: src patch build clean install uninstall distclean
+
+build:: autotools_build
+
+clean: autotools_clean
+
+src: rrfetched
+
+patch:: rrpatched
+
+install:: autotools_install
+
+uninstall: autotools_uninstall
+
+distclean: clean rrfetched_clean

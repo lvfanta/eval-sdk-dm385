@@ -1,0 +1,19 @@
+include $(CLASSES)/waf.defs
+
+.PHONY: build src patch clean install uninstall distclean
+
+build:: waf_build
+
+clean:: waf_clean
+
+src: rrfetched
+ 
+patch: rrpatched
+
+install:: rrsdk_install install_flag
+
+uninstall: waf_uninstall rrsdk_uninstall
+
+distclean: clean rrfetched_clean
+
+configure: src patch waf_configure

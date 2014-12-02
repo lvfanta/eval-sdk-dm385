@@ -1,0 +1,45 @@
+GLSDKURL?= http://software-dl.ti.com/dsps/dsps_public_sw/glsdk/
+GLSDK_COPY_EXCLUSIONS_PATTERNS=bin board-support docs etc example-applications filesystem \
+patches setup.sh test-bench uninstall uninstall.dat Uninstall* 
+
+include $(CLASSES)/common.defs
+include $(CLASSES)/glsdk.defs
+
+ifeq ($(GLSDK_PLATFORM),)
+ $(error ====== GLSDK_PLATFORM variable isn't defined on RidgeRun's glsdk makefile =====)
+endif
+#============================================================================================
+# Adding targets according to the configured platform
+#============================================================================================
+ifneq ($(GLSDK_TARGETS),)
+GLSDK_TARGETS+=ipumm_v6
+else
+GLSDK_TARGETS=ipumm_v6
+endif
+
+export BUILDING_SOFTWARE_OUTSIDE_DEVDIR=y
+
+EZSDK_TARGETS += $(EXTRA_TARGETS)
+build: glsdk rrconfig
+	@# We re-run make since this time Rules.make exist, so we can pull his variables in
+	$(V)$(MAKE) $(GLSDK_TARGETS)
+
+real_clean: $(GLSDK_TARGETS:=_clean) glsdk_clean
+
+clean:
+	$(V)if [ -e $(FETCHER_EXTRACT_DIRECTORY_NAME) ] ; then \
+	  $(MAKE) real_clean ; \
+	fi
+
+distclean: clean glsdk_distclean rrfetched_clean
+
+create_tar: glsdk_create_tar
+
+install: targets_install rrsdk_install glsdk_cmdline
+
+targets_install: build
+	@# We re-run make since this time Rules.make exist, so we can pull his variables in
+	$(V)$(MAKE) $(GLSDK_TARGETS:=_install)
+
+uninstall: $(GLSDK_TARGETS:=_uninstall)
+

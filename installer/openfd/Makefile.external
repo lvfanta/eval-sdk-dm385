@@ -1,0 +1,22 @@
+#$L$
+# Copyright (C) 2013 Ridgerun (http://www.ridgerun.com). 
+#$L$
+
+NAND_MMAP_FILE?=$(IMAGEDIR)/nand-mmap.config
+SD_SCRIPT_MMAP_FILE?=$(IMAGEDIR)/sd-script-mmap.config
+
+installnotimplemented:
+ifeq ($(CONFIG_INSTALLER_MODE_SD_CARD_INSTALLER),y)
+	$(V) echo -e "Target not implemented in CONFIG_INSTALLER_MODE_SD_CARD_INSTALLER" 
+	$(V) echo -e "Try: make install"
+endif
+
+installbootloader: installnotimplemented
+installkernel: installnotimplemented
+installkernelram: installnotimplemented
+installfs: installnotimplemented
+installcmdline: installnotimplemented
+installbootcmd: installnotimplemented
+installmtdparts: installnotimplemented
+
+include $(DEVDIR)/installer/$(INSTALLER)/mach/Makefile.external

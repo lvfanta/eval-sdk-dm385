@@ -1,0 +1,4276 @@
+Index: kernel/linux-2.6.37-psp04.04.00.01/drivers/media/video/ti81xx/ti81xxvin_main.c
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/drivers/media/video/ti81xx/ti81xxvin_main.c	2014-10-24 15:14:21.515411345 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/drivers/media/video/ti81xx/ti81xxvin_main.c	2014-11-21 17:37:19.151573722 -0600
+@@ -56,30 +56,35 @@
+ 		v4l2_err(&ti81xxvin_obj.v4l2_dev, fmt, ## arg)
+ #define ti81xxvin_dbg(level, debug, fmt, arg...)	\
+ 		v4l2_dbg(level, debug, &ti81xxvin_obj.v4l2_dev, fmt, ## arg)
+-static int debug = 1;
++static int debug = 2;
+ static u32 inst0_numbuffers = 4;
+ static u32 inst1_numbuffers = 4;
+ static u32 inst2_numbuffers = 4;
+ static u32 inst3_numbuffers = 4;
++static u32 inst4_numbuffers = 4;
+ 
+ module_param(debug, int, 0644);
+ module_param(inst0_numbuffers, uint, S_IRUGO);
+ module_param(inst1_numbuffers, uint, S_IRUGO);
+ module_param(inst2_numbuffers, uint, S_IRUGO);
+ module_param(inst3_numbuffers, uint, S_IRUGO);
++module_param(inst4_numbuffers, uint, S_IRUGO);
+ 
+ MODULE_PARM_DESC(debug, "Debug level 0-1");
+ MODULE_PARM_DESC(inst0_numbuffers, "Instance 0 buf_obj count (default:4)");
+ MODULE_PARM_DESC(inst1_numbuffers, "Instance 1 buf_obj count (default:4)");
+ MODULE_PARM_DESC(inst2_numbuffers, "Instance 2 buf_obj count (default:4)");
+ MODULE_PARM_DESC(inst3_numbuffers, "Instance 3 buf_obj count (default:4)");
++MODULE_PARM_DESC(inst4_numbuffers, "Instance 4 buf_obj count (default:4)");
++
+ 
+ static struct ti81xxvin_config_params config_params = {
+-	.min_numbuffers = 4,
++	.min_numbuffers = 5,
+ 	.numbuffers[0] = 4,
+ 	.numbuffers[1] = 4,
+ 	.numbuffers[2] = 4,
+ 	.numbuffers[3] = 4,
++	.numbuffers[4] = 4,
+ };
+ 
+ /**
+@@ -101,8 +106,11 @@
+ 	struct timeval timevalue;
+ 	struct videobuf_buffer *buf;
+ 
+-	if (0 == buf_obj->started)
++	//printk("## VIN: capt_num: %u\n", inst->captctrl->capt_num);
++
++	if (0 == buf_obj->started || (inst->captctrl->capt_num == 4))
+ 		goto restart_timer;
++
+ 	ti81xxvin_check_overflow(inst, &status, 0);
+ 	if (status.porta_overflow || status.portb_overflow) {
+ 		spin_lock(&buf_obj->buf_irqlock);
+@@ -135,6 +143,8 @@
+ 		return FVID2_DF_RGB24_888;
+ 	case V4L2_PIX_FMT_NV16:
+ 		return FVID2_DF_YUV422SP_UV;
++	case V4L2_PIX_FMT_UYVY:
++		return FVID2_DF_YUV422I_UYVY;
+ 	default:
+ 		BUG();
+ 	}
+@@ -155,6 +165,7 @@
+ 			(crop->width == win->w.width) &&
+ 			(cctrl->decoder_height == crop->height) &&
+ 			(crop->height == win->w.height)) {
++		printk("## VIN: scale not enable OK\n");
+ 		out_stream_info->scEnable = 0;
+ 		return 0;
+ 	}
+@@ -205,6 +216,7 @@
+ 	/* TODO Set the video interface mode according to the
+ 	 * decoder selected */
+ 	cparams->videoIfMode = VPS_CAPT_VIDEO_IF_MODE_16BIT;
++	printk("## VIN: test videoIfMode: %u\n",cparams->videoIfMode);
+ 	/* Select the inDataformat according the input selected in decoder */
+ 	cparams->inDataFormat = FVID2_DF_YUV422P;
+ 	cparams->periodicCallbackEnable = 0;
+@@ -218,6 +230,7 @@
+ 	cparams->videoCaptureMode = sdev_info->video_capture_mode;
+ 	cparams->videoIfMode = sdev_info->video_if_mode;
+ 	cparams->inDataFormat = sdev_info->input_data_format;
++	printk("## VIN: test videoIfMode: %u\n",cparams->videoIfMode);
+ 	memcpy(cctrl->vipcfg, &sdev_info->vip_cfg,
+ 			sizeof(struct Vps_VipConfig));
+ 	memcpy(cctrl->vipportcfg, &sdev_info->vip_port_cfg,
+@@ -267,6 +280,10 @@
+ 		out_stream_info->pitch[FVID2_RGB_ADDR_IDX] =
+ 			inst->buf_obj.fmt.fmt.pix.bytesperline;
+ 		break;
++	case FVID2_DF_YUV422I_UYVY:
++		out_stream_info->pitch[FVID2_YUV_INT_ADDR_IDX] =
++			inst->buf_obj.fmt.fmt.pix.bytesperline;
++		break;
+ 	default:
+ 		BUG();
+ 	}
+@@ -369,6 +386,7 @@
+ 	ti81xxvin_dbg(2, debug, "ti81xxvin_config_format\n");
+ 
+ 	if (V4L2_DV_INVALID != inst->video.cur_dv_preset.preset) {
++		printk("## VIN: dv_preset was not invalid\n");
+ 		switch (inst->video.cur_dv_preset.preset) {
+ 		case V4L2_DV_1080I30:
+ 		case V4L2_DV_1080I25:
+@@ -377,15 +395,20 @@
+ 			buf_obj->fmt.fmt.pix.field = V4L2_FIELD_INTERLACED;
+ 			break;
+ 		default:
++			printk("## VIN: dv_preset was V4L2_STD_NTSC\n");
+ 			buf_obj->fmt.fmt.pix.field = V4L2_FIELD_NONE;
+ 		}
+ 	} else if (V4L2_STD_UNKNOWN != inst->video.cur_std_id)
+ 		buf_obj->fmt.fmt.pix.field = V4L2_FIELD_INTERLACED;
+ 	else
+ 		buf_obj->fmt.fmt.pix.field = V4L2_FIELD_NONE;
+-	buf_obj->memory = V4L2_MEMORY_MMAP;
++	//buf_obj->memory = V4L2_MEMORY_MMAP;
++	printk("## VIN: using V4L2_MEMORY_USERPTR\n");
++	buf_obj->memory = V4L2_MEMORY_USERPTR;
+ 
+ 	buf_obj->fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
++	printk("## VIN: testing V4L2_PIX_FMT_UYVY format\n"); 			//========= format ============
++	//buf_obj->fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_UYVY;
+ 	buf_obj->fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+ 	buf_obj->fmt.fmt.pix.sizeimage = buf_obj->fmt.fmt.pix.height *
+ 		buf_obj->fmt.fmt.pix.width * 2 ;
+@@ -548,6 +571,7 @@
+ 	 */
+ 
+ 	if (pixfmt->pixelformat != V4L2_PIX_FMT_YUYV &&
++			pixfmt->pixelformat != V4L2_PIX_FMT_UYVY &&
+ 			pixfmt->pixelformat != V4L2_PIX_FMT_NV12 &&
+ 			pixfmt->pixelformat != V4L2_PIX_FMT_NV16 &&
+ 			pixfmt->pixelformat != V4L2_PIX_FMT_RGB24) {
+@@ -666,6 +690,7 @@
+ 	}
+ 	if (update) {
+ 		ti81xxvin_vps_config_format(inst);
++		printk("## VIN: about to call captctrl->check_format\n");
+ 		ret = inst->captctrl->check_format(inst->captctrl,
+ 				&inst->captctrl->fmt);
+ 
+@@ -685,6 +710,7 @@
+ 	struct videobuf_buffer *buf;
+ 	struct timeval timevalue;
+ 
++	//printk("## VIN: IN capture complete cb !!!\n");
+ 	instance_id = (int)(dev_id);
+ 	inst = dev->dev[instance_id];
+ 	field = inst->buf_obj.fmt.fmt.pix.field;
+@@ -692,10 +718,12 @@
+ 	buf_obj = &inst->buf_obj;
+ 	spin_lock(&buf_obj->buf_irqlock);
+ 	if ((!inst->dma_queue.next) || list_empty(&inst->dma_queue)) {
++		printk("## VIN: list empty\n");
+ 		v4l2_err(ti81xxvin_dev->driver, "list empty\n");
+ 		goto isr_error;
+ 	}
+ 	if (0 == buf_obj->started) {
++		printk("## VIN: Instance not started\n");
+ 		v4l2_err(ti81xxvin_dev->driver, "Instance not started\n");
+ 		goto isr_error;
+ 	}
+@@ -712,6 +740,7 @@
+ 			struct videobuf_buffer,
+ 			queue);
+ 	buf->state = VIDEOBUF_ACTIVE;
++	//printk("## VIN: isr done\n");
+ isr_error:
+ 	spin_unlock(&buf_obj->buf_irqlock);
+ }
+@@ -735,10 +764,13 @@
+ 	buf_obj = &inst->buf_obj;
+ 
+ 	ti81xxvin_dbg(2, debug, "ti81xxvin_buffer_setup\n");
++	printk("## VIN: IN ti81xxvin_buffer_setup\n");
+ 
+ 	/* If memory type is not mmap, return */
+-	if (V4L2_MEMORY_MMAP != buf_obj->memory)
++	if (V4L2_MEMORY_MMAP != buf_obj->memory){
++		printk("## VIN: mem type = user_ptr\n");
+ 		return 0;
++	}
+ 
+ 	/* Calculate the size of the buffer
+ 	 * We will not force the minimum size on user */
+@@ -770,7 +802,7 @@
+ 	struct ti81xxvin_instance_obj *inst = fh->instance;
+ 	struct ti81xxvin_buffer_obj *buf_obj;
+ 
+-
++	//printk("## VIN: IN ti81xxvin_buffer_prepare\n");
+ 	ti81xxvin_dbg(2, debug, "ti81xxvin_buffer_prepare\n");
+ 
+ 	buf_obj = &inst->buf_obj;
+@@ -819,6 +851,7 @@
+ 
+ 	buf_obj = &inst->buf_obj;
+ 
++	//printk("## VIN: IN ti81xxvin_buffer_queue\n");
+ 	ti81xxvin_dbg(2, debug, "ti81xxvin_buffer_queue\n");
+ 
+ 	if (!buf_obj->last_done_buffer)
+@@ -867,6 +900,7 @@
+ 	struct ti81xxvin_instance_obj *inst = fh->instance;
+ 	struct ti81xxvin_buffer_obj *buf_obj;
+ 
++	//printk("## VIN: IN ti81xxvin_buffer_release\n");
+ 	buf_obj = &inst->buf_obj;
+ 	videobuf_dma_contig_free(q, vb);
+ 	vb->state = VIDEOBUF_NEEDS_INIT;
+@@ -879,18 +913,22 @@
+ 	struct Vps_CaptOneCallBackPerFrm onecallback;
+ 	struct Vps_CaptStoragePrms storageparams;
+ 
++	printk("## VIN: calling capt_create\n");
+ 	ret = (inst->captctrl->create(inst->captctrl));
+ 	if (ret) {
+ 		ti81xxvin_err("ti81xxvin_vps_create failed\n");
+ 		return ret;
+ 	}
+ 	returnerrfrm.enable = 1;
++
++	printk("## VIN: calling capt_control [IOCTL_VPS_CAPT_RETURN_ERR_FRM]\n");
+ 	ret = (inst->captctrl->control(inst->captctrl,
+ 				IOCTL_VPS_CAPT_RETURN_ERR_FRM,
+ 				(void *)&returnerrfrm, NULL));
+ 	BUG_ON(ret);
+ 
+ 	onecallback.enable = 1;
++	printk("## VIN: calling capt_control [IOCTL_VPS_CAPT_ONE_CB_PER_FRM]\n");
+ 	ret = (inst->captctrl->control(inst->captctrl,
+ 				IOCTL_VPS_CAPT_ONE_CB_PER_FRM,
+ 				(void *)&onecallback, NULL));
+@@ -899,6 +937,7 @@
+ 		storageparams.chNum = 0;
+ 		storageparams.bufferFmt = FVID2_BUF_FMT_FRAME;
+ 		storageparams.fieldMerged = 1;
++		printk("## VIN: calling capt_control [IOCTL_VPS_CAPT_SET_STORAGE_FMT]\n");
+ 		ret = (inst->captctrl->control(inst->captctrl,
+ 					IOCTL_VPS_CAPT_SET_STORAGE_FMT,
+ 					(void *)&storageparams, NULL));
+@@ -965,12 +1004,15 @@
+ 	u32 *addr;
+ 	u32 reg_val;
+ 
++	//printk("## VIN: call to ti81xxvin_check_overflow\n");
++
+ 	addr = (u32 *)inst->addr;
+ 	stat->porta_overflow = 0;
+ 	stat->portb_overflow = 0;
+ 
++	printk("## VIN: fail here\n");
+ 	reg_val = addr[VIP_REG_FIQ_STATUS_OFFSET];
+-
++	printk("## VIN: fail here reg_val %u\n",reg_val);
+ 	if (reg_val & VIP_PARSER_FIQ_STATUS_OUTPUT_FIFO_PRTA_LUMA_STATUS_MASK) {
+ 		stat->porta_overflow = 1;
+ 		if (clear)
+@@ -1096,6 +1138,7 @@
+ 
+ 	ti81xxvin_dbg(2, debug, "VIDIOC_S_FMT\n");
+ 
++	printk("## VIN: --- Inside vidioc_s_fmt_vid_cap\n");
+ 	/* If streaming is started, return error */
+ 	if (buf_obj->started) {
+ 		ti81xxvin_dbg(1, debug, "Streaming is started\n");
+@@ -1115,6 +1158,7 @@
+ 
+ 	pixfmt = &fmt->fmt.pix;
+ 	/* Check for valid field format */
++	printk("## VIN: checking format, in vidioc_s_fmt_vid_cap\n");
+ 	ret = ti81xxvin_check_format(inst, pixfmt, 1);
+ 
+ 	if (ret)
+@@ -1140,7 +1184,7 @@
+ 	struct ti81xxvin_fh *fh = priv;
+ 	struct ti81xxvin_instance_obj *inst = fh->instance;
+ 	struct v4l2_pix_format *pixfmt = &fmt->fmt.pix;
+-
++	printk("## VIN: checking format, in vidioc_try_fmt_vid_cap\n");
+ 	return ti81xxvin_check_format(inst, pixfmt, 1);
+ }
+ 
+@@ -1157,6 +1201,7 @@
+ 	struct ti81xxvin_instance_obj *inst = fh->instance;
+ 	struct ti81xxvin_buffer_obj *buf_obj = &inst->buf_obj;
+ 
++	printk("## VIN: --- Inside vidioc_g_fmt_vid_cap\n");
+ 	/* Check the validity of the buf_obj type */
+ 	if (buf_obj->fmt.type != fmt->type)
+ 		return -EINVAL;
+@@ -1292,7 +1337,7 @@
+ 	struct ti81xxvin_subdev_info *subdev_info;
+ 	int sd_index;
+ 
+-
++	printk("## VIN: --- Inside vidioc_query_dv_preset\n");
+ 	ti81xxvin_dbg(2, debug, "vidioc_query_dv_preset\n");
+ 
+ 	if (mutex_lock_interruptible(&buf_obj->buf_lock))
+@@ -1342,6 +1387,7 @@
+ 
+          inst->video.cur_dv_preset = *qpreset;
+ 	/* Get the information about the standard */
++	printk("## VIN: updating std info\n");
+ 	if (ti81xxvin_update_std_info(inst, &mbus_framefmt)) {
+ 		ret = -EINVAL;
+ 		ti81xxvin_err("Error getting the standard info\n");
+@@ -1374,8 +1420,10 @@
+ #endif	/* Configure the default format information according to the std
+ 	 * selected
+ 	 */
++	printk("## VIN: config format\n");
+ 	ti81xxvin_config_format(inst);
+ 
++	printk("## VIN: vps config format\n");
+ 	ti81xxvin_vps_config_format(inst);
+ vidioc_query_dv_preset_exit:
+ 	mutex_unlock(&buf_obj->buf_lock);
+@@ -1750,7 +1798,7 @@
+ 	u32 addr, offset;
+ 	int ret = 0;
+ 
+-
++	//printk("fmt.type %d  tbuf type%d\n", buf_obj->fmt.type, tbuf.type);
+ 	if (buf_obj->fmt.type != tbuf.type) {
+ 		ti81xxvin_err("invalid buffer type\n");
+ 		ret =  -EINVAL;
+@@ -1765,6 +1813,7 @@
+ 	ti81xxvin_dbg(2, debug, "vidioc_qbuf\n");
+ 
+ 	ret = videobuf_qbuf(&buf_obj->buffer_queue, buf);
++	//printk("## VIN: check if buffer is started and ret %u\n",ret);
+ 	if (buf_obj->started && !ret) {
+ 		struct videobuf_buffer *vb;
+ 		vb = list_entry(inst->dma_queue.prev,
+@@ -1776,11 +1825,14 @@
+ 			addr = videobuf_to_dma_contig(vb);
+ 		offset = (inst->win.w.left) +
+ 			(inst->win.w.top * buf_obj->fmt.fmt.pix.bytesperline);
++		//printk("## VIN: calling captctrl->set_buffer()\n");
+ 		inst->captctrl->set_buffer(inst->captctrl, addr, vb->i, offset);
+ 
+ 		/* TODO Check all the software conditions which are checked in
+ 		 * FVID2_queue so that queue call should never return error
+ 		 */
++
++		//printk("## VIN: calling captctrl->queue()\n");
+ 		ret = inst->captctrl->queue(inst->captctrl, vb->i);
+ 		BUG_ON(ret);
+ 	}
+@@ -1806,13 +1858,19 @@
+ 	mutex_lock(&buf_obj->buf_lock);
+ 	ti81xxvin_dbg(2, debug, "vidioc_dqbuf\n");
+ 
++	//printk("## VIN: calling captctrl->dequeue\n");
+ 	ret = inst->captctrl->dequeue(inst->captctrl, 0);
++	//printk("## VIN: captctrl->dequeue done: %d\n", ret);
+ 	num_frms_dequeued = inst->captctrl->framelist[0]->numframes;
+-	if (num_frms_dequeued > 1)
+-		BUG_ON(num_frms_dequeued);
++	//printk("## VIN: dequeued %u frames\n", num_frms_dequeued);
++
++	/*if (num_frms_dequeued > 1)
++		BUG_ON(num_frms_dequeued);*/ 			// TEMPORAL COMMENT JUST FOR TESTING PURPOSES
+ 
++	//printk("## VIN: calling videobuf_dqbuf\n");
+ 	ret = videobuf_dqbuf(&buf_obj->buffer_queue, buf,
+ 			file->f_flags & O_NONBLOCK);
++	//printk("## VIN: videobuf_dqbuf ret %u\n", ret);
+ 	mutex_unlock(&buf_obj->buf_lock);
+ 	return ret;
+ 
+@@ -1836,6 +1894,7 @@
+ 	struct videobuf_buffer *vb;
+ 	u32 addr, offset;
+ 
++	printk("## VIN: --- STARTING VIDIOC_STREAMON \n");
+ 	ti81xxvin_dbg(2, debug, "vidioc_streamon\n");
+ 	mutex_lock(&buf_obj->buf_lock);
+ 	vid_ch = &inst->video;
+@@ -1856,6 +1915,7 @@
+ 		ret = -EBUSY;
+ 		goto vidioc_streamon_failed;
+ 	}
++	printk("## VIN: checking format, in vidioc_streamon\n");
+ 	ret = ti81xxvin_check_format(inst, &buf_obj->fmt.fmt.pix, 0);
+ 	if (ret) {
+ 		ti81xxvin_dbg(1, debug, "io not allowed\n");
+@@ -1866,23 +1926,27 @@
+ 	 * Set format for starting the driver
+ 	 */
+ 	/* Enable streamon on the sub device */
+-	ret = v4l2_subdev_call(ti81xxvin_obj.sd[inst->curr_sd_index], video,
+-			s_stream, 1);
++	printk("## VIN: Enable streamon on sub device (set enable on ov5640 script)\n");
++	//ret = v4l2_subdev_call(ti81xxvin_obj.sd[inst->curr_sd_index], video,
++	//		s_stream, 1);
+ 
+ 	if (ret && (ret != -ENOIOCTLCMD)) {
+ 		ti81xxvin_dbg(1, debug, "stream on failed in subdev\n");
+ 		goto vidioc_streamon_failed;
+ 	}
++	printk("## VIN: creating vps\n");
+ 	ret = ti81xxvin_vps_create(inst);
+ 	if (ret) {
+ 		ti81xxvin_err("Vps create failed\n");
+ 		goto ti81xxvin_vps_create_failed;
+ 
+-	}
++	} msleep(1000);
+ 	/* Register interrupt handler */
+-	vps_capture_register_isr(ti81xxvin_instance_isr,
++	printk("## VIN: registering vps_capture isr\n");
++	vps_capture_register_isr(ti81xxvin_instance_isr,		// CHECK THIS!!!!
+ 			(void *)inst->instance_id, inst->instance_id);
+ 	/* Call videobuf_streamon to start streaming in videobuf */
++	printk("## VIN: calling videobuf_streamon\n");
+ 	ret = videobuf_streamon(&buf_obj->buffer_queue);
+ 	if (ret) {
+ 		ti81xxvin_dbg(1, debug, "videobuf_streamon\n");
+@@ -1894,27 +1958,35 @@
+ 		goto streamon_failed;
+ 	}
+ 
++	printk("## VIN: queue list of buffers\n");
+ 	list_for_each_entry(vb, &inst->dma_queue, queue) {
+ 		/*though queue all prime buffer, but only the first
+ 		buffer will be displayed. other still int the QUEUE state*/
+ 		if (vb->i == 0)
+ 			vb->state = VIDEOBUF_ACTIVE;
+-		if (V4L2_MEMORY_USERPTR == buf_obj->memory)
++		if (V4L2_MEMORY_USERPTR == buf_obj->memory){
++			printk("## VIN: using userptr mem\n");
+ 			addr = vb->boff;
++		}
+ 		else
+ 			addr = videobuf_to_dma_contig(vb);
+ 		offset = (inst->win.w.left) +
+ 			(inst->win.w.top * buf_obj->fmt.fmt.pix.bytesperline);
++		printk("## VIN: setting buffer\n");
+ 		inst->captctrl->set_buffer(inst->captctrl, addr, vb->i, offset);
+ 
+ 		/* TODO Check all the software conditions which are checked in
+ 		* FVID2_queue so that queue call should never return error
+ 		*/
++		printk("## VIN: queuing buffer\n");
+ 		ret = inst->captctrl->queue(inst->captctrl, vb->i);
+ 		BUG_ON(ret);
+ 
+ 	}
+ 
++	//printk("## VIN: going to finish, ret %u\n", ret);
++	//goto finish;
++
+ 	/* Initialize field_id and started member */
+ 	inst->field_id = 0;
+ 	buf_obj->started = 1;
+@@ -1930,28 +2002,35 @@
+ 		goto vps_start_failed;
+ 	}
+ 
++	printk("## VIN: vps_start\n");
+ 	ret = ti81xxvin_vps_start(inst);
+ 	if (ret) {
+ 		ti81xxvin_err("vps start failed\n");
+ 		goto vps_start_failed;
+ 	}
++	printk("## VIN: vps_start done, ret %u\n",ret);
+ 	ret = mod_timer(&inst->overflow_timer,
+ 		jiffies + msecs_to_jiffies(100));
+ 	if (ret)
+-		ti81xxvin_err("Setting up of timer failed\n");
++		printk("Setting up of timer failed\n");
+ 
++finish:
+ 	mutex_unlock(&buf_obj->buf_lock);
+ 	return 0;
+ 
+ vps_start_failed:
++	printk("## VIN: vps_start_failed\n");
+ 	videobuf_streamoff(&buf_obj->buffer_queue);
+ streamon_failed:
++	printk("## VIN: streamon_failed\n");
+ 	vps_capture_unregister_isr(ti81xxvin_instance_isr,
+ 			(void *)inst->instance_id, inst->instance_id);
+ ti81xxvin_vps_create_failed:
++	printk("## VIN: ti81xxvin_vps_create_failed\n");
+ 	ret = v4l2_subdev_call(ti81xxvin_obj.sd[inst->curr_sd_index], video,
+ 			s_stream, 0);
+ vidioc_streamon_failed:
++	printk("## VIN: vidioc_streamon_failed\n");
+ 	mutex_unlock(&buf_obj->buf_lock);
+ 
+ 	return ret;
+@@ -2057,6 +2136,7 @@
+ 	int err = -EINVAL;
+ 	struct ti81xxvin_buffer_params *params = &inst->video.buf_params;
+ 
++	printk("## VIN: --- Inside vidioc_s_fmt_vid_overlay\n");
+ 	if (mutex_lock_interruptible(&buf_obj->buf_lock))
+ 		return -ERESTARTSYS;
+ 
+@@ -2080,6 +2160,7 @@
+ 	struct ti81xxvin_instance_obj *inst = fh->instance;
+ 	struct v4l2_window *win = &f->fmt.win;
+ 
++	printk("## VIN: --- Inside vidioc_g_fmt_vid_overlay\n");
+ 	memset(win, 0, sizeof(*win));
+ 
+ 	/*
+@@ -2227,12 +2308,15 @@
+ 	struct ti81xxvin_fh *fh;
+ 	int i, ret = 0;
+ 
++	printk("## VIN: --- IN TI81XX_VIN OPEN\n");
+ 	ti81xxvin_dbg(2, debug, "ti81xxvin_open\n");
+ 
+ 	inst = video_get_drvdata(vdev);
+ 	setup_timer(&inst->overflow_timer, ti81xxvin_overflow_handler,
+ 		(unsigned long)inst);
+ 
++	if(inst->captctrl != NULL) printk("## VIN: capture id: %d\n", inst->captctrl->capt_num);
++	else printk("## VIN: capture id is not set\n");
+ 
+ 	vid_inst = &inst->video;
+ 	buf_obj = &inst->buf_obj;
+@@ -2240,6 +2324,7 @@
+ 	if (mutex_lock_interruptible(&buf_obj->buf_lock))
+ 		return -ERESTARTSYS;
+ 
++	printk("## VIN: --- Going through sub_devices\n");
+ 	if (NULL == inst->curr_subdev_info) {
+ 		/**
+ 		 * searinst through the sub device to see a registered
+@@ -2263,6 +2348,7 @@
+ 	}
+ 
+ 	/* Allocate memory for the file handle object */
++	printk("## VIN: --- Allocating memory for file handle\n");
+ 	fh = kmalloc(sizeof(struct ti81xxvin_fh), GFP_KERNEL);
+ 	if (NULL == fh) {
+ 		ti81xxvin_err("unable to allocate memory for file"
+@@ -2271,6 +2357,7 @@
+ 		goto exit;
+ 	}
+ 
++	printk("## VIN: --- Instance management\n");
+ 	/* store pointer to fh in private_data member of filep */
+ 	filep->private_data = fh;
+ 	fh->instance = inst;
+@@ -2289,6 +2376,20 @@
+ 	/* Initialize priority of this instance to default priority */
+ 	fh->prio = V4L2_PRIORITY_UNSET;
+ 	v4l2_prio_open(&inst->prio, &fh->prio);
++	mutex_unlock(&buf_obj->buf_lock);
++	goto retu;
++
++	/* ISS test code for ISS driver create */
++	printk("## VIN: --- Lets try to create the ISS drv_instance ...\n");
++	ret = (inst->captctrl->create(inst->captctrl));
++	if (ret) {
++		ti81xxvin_err("ti81xxvin_vps_create failed\n");
++		return ret;
++	}
++
++retu:
++	return ret;
++
+ exit:
+ 	mutex_unlock(&buf_obj->buf_lock);
+ 	return ret;
+@@ -2434,14 +2535,18 @@
+ 	if ((inst3_numbuffers > 0) &&
+ 	    (inst3_numbuffers < config_params.min_numbuffers))
+ 		inst3_numbuffers = config_params.min_numbuffers;
++	if ((inst4_numbuffers > 0) &&
++	    (inst4_numbuffers < config_params.min_numbuffers))
++		inst4_numbuffers = config_params.min_numbuffers;
+ 
+ 	config_params.numbuffers[TI81XXVIN_INSTANCE0_VIDEO] = inst0_numbuffers;
+ 	config_params.numbuffers[TI81XXVIN_INSTANCE1_VIDEO] = inst1_numbuffers;
+ 	config_params.numbuffers[TI81XXVIN_INSTANCE2_VIDEO] = inst2_numbuffers;
+ 	config_params.numbuffers[TI81XXVIN_INSTANCE3_VIDEO] = inst3_numbuffers;
++	config_params.numbuffers[TI81XXVIN_INSTANCE4_VIDEO] = inst4_numbuffers;
+ 
+ 
+-	/* Allocate memory for 4 instance objects */
++	/* Allocate memory for 5 instance objects */
+ 	for (i = 0; i < TI81XXVIN_CAPTURE_MAX_DEVICES; i++) {
+ 		ti81xxvin_obj.dev[i] =
+ 		    kzalloc(sizeof(*ti81xxvin_obj.dev[i]), GFP_KERNEL);
+@@ -2480,7 +2585,7 @@
+ 	int num_capt;
+ 	struct resource *hdvpss_resource;
+ 
+-	printk("## --- Starting ti81xxvin_probe\n");
++	printk("## VIN: --- Starting ti81xxvin_probe\n");
+ 	ti81xxvin_dev = &pdev->dev;
+ 	err = ti81xxvin_initialize();
+ 	if (err) {
+@@ -2490,18 +2595,18 @@
+ 	}
+ 
+ 	/* get virtual addres of IO device using ioremap, store it to each instance */
+-	printk("## --- setting virtual address\n");
++	printk("## VIN: --- Setting virtual address\n");
+ 	for (i = 0; i < pdev->num_resources; i++) {
+ 		hdvpss_resource = &pdev->resource[i];
+ 		if (hdvpss_resource->flags == IORESOURCE_MEM) {
+-			printk("## ioremap start: %lX end %lX \n", hdvpss_resource->start, hdvpss_resource->end - hdvpss_resource->start);
++			printk("## VIN: ioremap start: %lX end %lX \n", hdvpss_resource->start, hdvpss_resource->end - hdvpss_resource->start);
+ 			ti81xxvin_obj.addr[i] = ioremap_nocache(
+ 				hdvpss_resource->start,
+ 				hdvpss_resource->end - hdvpss_resource->start);
+ 		}
+ 	}
+ 
+-	printk("## --- Setting up capture instances\n");
++	printk("## VIN: --- Setting up capture instances\n");
+ 	for (i = 0; i < TI81XXVIN_CAPTURE_MAX_DEVICES; i++) {
+ 		/* Get the pointer to the instance object, set address of respective input port */
+ 		inst = ti81xxvin_obj.dev[i];
+@@ -2509,7 +2614,11 @@
+ 			TI81XXVIN_INSTANCE1_VIDEO == i)
+ 			inst->addr = ti81xxvin_obj.addr[0];
+ 		else
+-			inst->addr = ti81xxvin_obj.addr[1];
++			if (TI81XXVIN_INSTANCE2_VIDEO == i ||
++				TI81XXVIN_INSTANCE3_VIDEO == i)
++				inst->addr = ti81xxvin_obj.addr[1];
++			else
++				ti81xxvin_dbg(2, debug, "ISS input\n");
+ 		/* Allocate memory for video device */
+ 		vfd = video_device_alloc();
+ 		if (NULL == vfd) {
+@@ -2521,6 +2630,7 @@
+ 			goto hdvpss_dev_alloc_err;
+ 		}
+ 
++		printk("## VIN: --- Video Device init\n");
+ 		/* Initialize field of video device */
+ 		*vfd = hdvpss_video_template;
+ 		vfd->v4l2_dev = &ti81xxvin_obj.v4l2_dev;
+@@ -2534,6 +2644,7 @@
+ 		inst->video_dev = vfd;
+ 	}
+ 	t = vps_capt_get_num_cap();
++	printk("## VIN: --- Getting capture controls for %d instances\n",t);
+ 	num_capt = 0;
+ 	for (i = 0; i < t; i++) {
+ 		struct vps_capt_ctrl *cctrl;
+@@ -2545,7 +2656,7 @@
+ 		}
+ 		ti81xxvin_obj.captctrl[ti81xxvin_obj.act_num_capt_ctrl++] =
+ 			cctrl;
+-	}
++	} printk("## VIN: --- Setting each instance\n");
+ 	for (j = 0; j < TI81XXVIN_CAPTURE_MAX_DEVICES; j++) {
+ 		inst = ti81xxvin_obj.dev[j];
+ 		inst->instance_id = j;
+@@ -2560,8 +2671,9 @@
+ 		if (err)
+ 			goto probe_out;
+ 
++		/* Set the inst->video_dev->dev = inst */
+ 		video_set_drvdata(inst->video_dev, inst);
+-
++		printk("## VIN: instance_id = %d\n",j);
+ 	}
+ 
+ 	/* TODO Get the proper adapter id */
+@@ -2573,7 +2685,8 @@
+ 	else
+ 		i2c_adap = i2c_get_adapter(2);
+ */
+-
++	/* Platform specific data from vpss.c */
++	printk("## VIN: --- Plafform data\n");
+ 	config = pdev->dev.platform_data;
+ 	subdev_count = config->subdev_count;
+ 	ti81xxvin_obj.sd = kmalloc(sizeof(struct v4l2_subdev *) *subdev_count,
+@@ -2585,6 +2698,7 @@
+ 		goto probe_out;
+ 	}
+ 
++	printk("## VIN: --- Registering device in V4L2 framework\n");
+ 	err = v4l2_device_register(ti81xxvin_dev, &ti81xxvin_obj.v4l2_dev);
+ 	if (err) {
+ 		v4l2_err(ti81xxvin_dev->driver, "Error registering"
+Index: kernel/linux-2.6.37-psp04.04.00.01/drivers/media/video/ti81xx/ti81xxvin_pvt.h
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/drivers/media/video/ti81xx/ti81xxvin_pvt.h	2014-10-24 15:14:21.515411345 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/drivers/media/video/ti81xx/ti81xxvin_pvt.h	2014-10-24 15:14:21.471411346 -0600
+@@ -31,7 +31,7 @@
+ #include "ti81xxvin_lib.h"
+ /* Macros */
+ 
+-#define TI81XXVIN_NUM_INSTANCES	4
++#define TI81XXVIN_NUM_INSTANCES	5
+ #define TI81XXVIN_BUFFER_ALIGN	16
+ 
+ 
+@@ -47,7 +47,7 @@
+ 	(V4L2_FIELD_SEQ_TB == field)) || \
+ 	(V4L2_FIELD_SEQ_BT == field)))
+ 
+-#define TI81XXVIN_CAPTURE_MAX_DEVICES	4
++#define TI81XXVIN_CAPTURE_MAX_DEVICES	5
+ #define TI81XXVIN_VIDEO_INDEX		0
+ #define TI81XXVIN_NUMBER_OF_OBJECTS	1
+ 
+@@ -68,6 +68,7 @@
+ 	TI81XXVIN_INSTANCE1_VIDEO,
+ 	TI81XXVIN_INSTANCE2_VIDEO,
+ 	TI81XXVIN_INSTANCE3_VIDEO,
++	TI81XXVIN_INSTANCE4_VIDEO,
+ };
+ 
+ /* This structure will store size parameters as per the mode selected by user */
+Index: kernel/linux-2.6.37-psp04.04.00.01/drivers/video/ti81xx/vpss/capt.c
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/drivers/video/ti81xx/vpss/capt.c	2014-10-24 15:14:21.515411345 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/drivers/video/ti81xx/vpss/capt.c	2014-11-24 09:24:52.637667998 -0600
+@@ -40,6 +40,7 @@
+ #include "core.h"
+ #include <mach/capt.h>
+ #include <linux/vps_capture.h>
++#include <linux/iss_capture.h>
+ 
+ static struct list_head cctrl_list;
+ static int num_captctrl;
+@@ -48,6 +49,37 @@
+ static int capture_control(struct vps_capt_ctrl *cctrl,
+ 				u32 cmd, void *cmdargs, void*cmdstatusargs);
+ 
++int gVstabEnable = 0;
++int gvsDemoEnable = 0;
++u32 gCameraLink_framesPerChannel;
++
++char *gCameraLink_portName[] = {
++    "VIP0 PortA", "VIP0 PortB", "VIP1 PortA", "VIP1 PortB",
++};
++
++char *gCameraLink_ifName[] = {
++    " 8-bit", "16-bit", "24-bit",
++};
++
++char *gCameraLink_modeName[] = {
++    "Non-mux Embedded Sync", "Line-mux Embedded Sync",
++    "Pixel-mux Embedded Sync", "Non-mux Discrete Sync",
++};
++
++u32 CameraLink_drvIsDataFormatTiled(struct Iss_CaptCreateParams * createArgs,
++                                       u16 streamId)
++{
++    struct Iss_CaptOutInfo *pOutInfo;
++
++    pOutInfo = &createArgs->outStreamInfo[streamId];
++
++    if (pOutInfo->memType == ISS_TILEDMEM)
++    {
++        return true;
++    }
++
++    return false;
++}
+ 
+ static inline struct vps_capt_ctrl *get_capture_ctrl_from_handle(void * handle)
+ {
+@@ -119,10 +151,14 @@
+ {
+ 	int r = 0;
+ 
+-	if (cctrl == NULL)
++	if (cctrl == NULL){
++		printk("## --- CCTRL IS NULL in capture_reset");
+ 		return -EINVAL;
+-	if ((!cctrl->isstarted) && (cctrl->handle))
++	}
++	if ((!cctrl->isstarted) && (cctrl->handle)){
++		printk("## --- CALLING fvid2_control CSI_RESET");
+ 		r = vps_fvid2_control(cctrl->handle, cmd, NULL, NULL);
++	}
+ 	return r;
+ }
+ 
+@@ -145,6 +181,24 @@
+ 
+ }
+ 
++static int capture_iss_set_frame_skip(struct vps_capt_ctrl *cctrl,
++		struct Iss_CaptFrameSkip *isscfrmskip)
++{
++	int r = 0;
++
++	if (cctrl == NULL)
++		return -EINVAL;
++	memcpy(cctrl->isscfrmskip, isscfrmskip,
++		sizeof(struct Iss_CaptFrameSkip));
++	if ((!cctrl->isstarted) && (cctrl->handle))
++		r = vps_fvid2_control(cctrl->handle,
++			IOCTL_ISS_CAPT_SET_FRAME_SKIP,
++			(struct Iss_CaptFrameSkip *)cctrl->isscfrmskip_phy,
++			NULL);
++	return r;
++
++}
++
+ static int capture_one_cb_per_frm(struct vps_capt_ctrl *cctrl,
+ 		struct Vps_CaptReturnErrFrms *conecbperfrm)
+ {
+@@ -155,6 +209,7 @@
+ 	memcpy(cctrl->conecbperfrm, conecbperfrm,
+ 		sizeof(struct Vps_CaptReturnErrFrms));
+ 	if ((!cctrl->isstarted) && (cctrl->handle))
++		printk("## capture_one_cb_per_frm going to be bad IOCTL\n");
+ 		r = vps_fvid2_control(cctrl->handle,
+ 			IOCTL_VPS_CAPT_ONE_CB_PER_FRM,
+ 			(struct Vps_CaptOneCallBackPerFrm *)
+@@ -167,13 +222,16 @@
+ /* this will be the call back register to the VPSS m3 for the VSYNC isr*/
+ static int capture_complete_cb(void *handle, void *appdata, void * reserved)
+ {
++	//printk("### -- IN CAPTURE CALLABCK\n");
++
+ 	struct vps_capt_ctrl *cctrl = get_capture_ctrl_from_handle(handle);
+ 	struct vps_isr_data *isrd;
+ 	unsigned long flags = 0;
+ 
+-
+ 	if (cctrl == NULL)
+ 		return -EINVAL;
++
++	//printk("### -- CCTRLnum: %d \n", cctrl->capt_num);
+ 	spin_lock_irqsave(&cctrl->buf_irqlock, flags);
+ 	list_for_each_entry(isrd, &cctrl->cb_list, list) {
+ 		if (isrd->isr)
+@@ -185,10 +243,11 @@
+ 
+ static int capture_create(struct vps_capt_ctrl *cctrl)
+ {
+-	u32	capinstid, cmd;
++	struct Iss_CaptFrameSkip frameSkip;
++	u32	capinstid, cmd, driverid;
+ 	int r = 0, i;
+-
+-	VPSSDBG("create capture%d\n", cctrl->capt_num);
++	printk("### -- IN CAPTURE_CREATE [capt.c]\n");
++	printk("## create capture with id: %d\n", cctrl->capt_num);
+ 
+ 	cctrl->cbparams->appdata = NULL;
+ 	cctrl->cbparams->errlist = NULL;
+@@ -199,33 +258,82 @@
+ 		cctrl->framelist[i]->numframes = 1;
+ 	switch (cctrl->capt_num) {
+ 	case 0:
++		printk("## case0\n");
+ 		capinstid = VPS_CAPT_INST_VIP0_PORTA;
++		driverid = FVID2_VPS_CAPT_VIP_DRV;
+ 		break;
+ 	case 1:
++		printk("## case1\n");
+ 		capinstid = VPS_CAPT_INST_VIP0_PORTB;
++		driverid = FVID2_VPS_CAPT_VIP_DRV;
+ 		break;
+ 	case 2:
++		printk("## case2\n");
+ 		capinstid = VPS_CAPT_INST_VIP1_PORTA;
++		driverid = FVID2_VPS_CAPT_VIP_DRV;
+ 		break;
+ 	case 3:
++		printk("## case3\n");
+ 		capinstid = VPS_CAPT_INST_VIP1_PORTB;
++		driverid = FVID2_VPS_CAPT_VIP_DRV;
++		break;
++	case 4:
++		printk("## case4\n");
++		capinstid = ISS_CAPT_INST_CSI;
++		driverid = FVID2_ISS_CAPT_DRV;
+ 		break;
+ 	default:
++		printk("## case_def\n");
+ 		BUG();
+ 	}
+-	cctrl->handle = vps_fvid2_create(FVID2_VPS_CAPT_VIP_DRV, capinstid,
+-		(void *)cctrl->ccp_phy, (void *)cctrl->ccs_phy,
+-		(struct fvid2_cbparams *)cctrl->cbp_phy);
+ 
+-	if (cctrl->handle == NULL) {
+-		r = -EINVAL;
+-		return r;
++	if (cctrl->capt_num != 4) {
++
++		printk("## calling vps_fvid2_create\n");
++		cctrl->handle = vps_fvid2_create(driverid, capinstid,
++			(void *)cctrl->ccp_phy, (void *)cctrl->ccs_phy,
++			(struct fvid2_cbparams *)cctrl->cbp_phy);
++
++		if (cctrl->handle == NULL) {
++			r = -EINVAL;
++			return r;
++		}
++
++		if (VPS_CAPT_INST_VIP0_PORTA == capinstid ||
++			VPS_CAPT_INST_VIP0_PORTB == capinstid) {
++			printk("## set command to IOCTL_VPS_CAPT_RESET_VIP0");
++			cmd = IOCTL_VPS_CAPT_RESET_VIP0;
++		} else {
++			VPSSDBG("## set command to IOCTL_VPS_CAPT_RESET_VIP1");
++			cmd = IOCTL_VPS_CAPT_RESET_VIP1;
++		}
++
++	} else {
++
++		printk("## calling iss_fvid2_create\n");
++		cctrl->handle = vps_fvid2_create(driverid, capinstid,
++			(void *)cctrl->issccp_phy, (void *)cctrl->issccs_phy,
++			(struct fvid2_cbparams *)cctrl->cbp_phy);
++
++		if (cctrl->handle == NULL) {
++			r = -EINVAL;
++			return r;
++		}
++
++		frameSkip.channelNum = cctrl->issccparams->channelNumMap[0][0];
++		frameSkip.frameSkipMask[0] = 0;
++		frameSkip.frameSkipMask[0] = 0;
++		printk("## calling iss_capt_set_frame_skip\n");
++		cmd = IOCTL_ISS_CAPT_SET_FRAME_SKIP;
++		r = capture_control(cctrl, cmd, (void *)&frameSkip, NULL);
++
++		if (r) printk("## set_frame_skip failed !!!\n");
++
++		printk("## set command to IOCTL_ISS_CAPT_RESET_CSI/n");
++		cmd = IOCTL_ISS_CAPT_RESET_CSI;
+ 	}
+-	if (VPS_CAPT_INST_VIP0_PORTA == capinstid ||
+-		VPS_CAPT_INST_VIP0_PORTB == capinstid)
+-		cmd = IOCTL_VPS_CAPT_RESET_VIP0;
+-	else
+-		cmd = IOCTL_VPS_CAPT_RESET_VIP1;
++
++	printk("## calling capture_control -> cmd\n");
+ 	r = capture_control(cctrl, cmd, NULL, NULL);
+ 	return r;
+ }
+@@ -285,6 +393,7 @@
+ {
+ 	int r = 0;
+ 
++	//printk("## --- Inside capture_queue\n");
+ 	if ((cctrl == NULL) || (cctrl->handle == NULL))
+ 		return -EINVAL;
+ 
+@@ -308,6 +417,7 @@
+ 	r = vps_fvid2_queue(cctrl->handle,
+ 			    (struct fvid2_framelist *)cctrl->frmls_phy[index],
+ 			    0);
++	//printk("## fvid2_queue ret: %u\n", r);
+ 	return r;
+ 
+ 
+@@ -323,7 +433,7 @@
+ 	VPSSDBG("dequeue video\n");
+ 	r = vps_fvid2_dequeue(cctrl->handle,
+ 			      (struct fvid2_framelist *)cctrl->frmls_phy[index],
+-			      0, FVID2_TIMEOUT_NONE);
++			      0, FVID2_TIMEOUT_NONE);  // NO TIMEOUT
+ 	return r;
+ 
+ 
+@@ -336,6 +446,9 @@
+ 	if (cctrl == NULL)
+ 		return -EINVAL;
+ 	switch (cmd) {
++	case IOCTL_ISS_CAPT_SET_FRAME_SKIP:
++		return capture_iss_set_frame_skip(cctrl,
++			(struct Iss_CaptFrameSkip *)cmdargs);
+ 	case IOCTL_VPS_CAPT_SET_STORAGE_FMT:
+ 		return capture_set_storage_fmt(cctrl,
+ 			(struct Vps_CaptStoragePrms *)cmdargs);
+@@ -348,6 +461,8 @@
+ 	case  IOCTL_VPS_CAPT_RESET_VIP0:
+ 	case  IOCTL_VPS_CAPT_RESET_VIP1:
+ 		return capture_reset(cctrl, cmd);
++	case IOCTL_ISS_CAPT_RESET_CSI:
++		return capture_reset(cctrl, cmd);  //*******REVISAR
+ 	default:
+ 		BUG();
+ 	}
+@@ -364,6 +479,7 @@
+ 	u32 scfmt, fm;
+ 	int r = 0;
+ 
++	//printk("## --- Inside capture_set_buffer\n");
+ 	VPSSDBG("set buffer\n");
+ 	if (cctrl == NULL)
+ 		return -EINVAL;
+@@ -374,11 +490,18 @@
+ 	framelist = cctrl->framelist[idx];
+ 	framelist->frames[0] = (struct fvid2_frame *)cctrl->frm_phy[idx];
+ 	framelist->numframes = 1;
+-	frame->channelnum = cctrl->ccparams->channelNumMap[0][0];
++	//printk("## check capt_id: %u\n", cctrl->capt_num);
++	if (cctrl->capt_num != 4)
++	frame->channelnum = (cctrl->capt_num != 4) ?
++		(cctrl->ccparams->channelNumMap[0][0]) :
++		(cctrl->issccparams->channelNumMap[0][0]);
+ 	/*get the field merged flag*/
+ 	fm = cctrl->fmt.fieldmerged[FVID2_YUV_INT_ADDR_IDX];
++
++	//printk("## check buffer format: %u\n", cctrl->fmt.dataformat);
+ 	switch (cctrl->fmt.dataformat) {
+ 	case FVID2_DF_YUV422I_YUYV:
++		//printk("## FVID2_DF_YUV422I_YUYV\n");
+ 		if (scfmt == FVID2_SF_PROGRESSIVE) {
+ 			frame->addr[FVID2_FRAME_ADDR_IDX] \
+ 				[FVID2_YUV_INT_ADDR_IDX] =
+@@ -407,6 +530,7 @@
+ 		}
+ 	break;
+ 	case FVID2_DF_YUV422SP_UV:
++		printk("## FVID2_DF_YUV422SP_UV\n");
+ 		if (scfmt == FVID2_SF_PROGRESSIVE) {
+ 			frame->addr[FVID2_FIELD_EVEN_ADDR_IDX] \
+ 				[FVID2_YUV_SP_Y_ADDR_IDX] =
+@@ -442,6 +566,7 @@
+ 
+ 		break;
+ 	case FVID2_DF_YUV420SP_UV:
++		printk("## FVID2_DF_YUV420SP_UV\n");
+ 		if (scfmt == FVID2_SF_PROGRESSIVE) {
+ 			frame->addr[FVID2_FIELD_EVEN_ADDR_IDX] \
+ 				[FVID2_YUV_SP_Y_ADDR_IDX] = (void *)addr +
+@@ -508,6 +633,7 @@
+ 
+ 	break;
+ 	case FVID2_DF_RGB24_888:
++		printk("## FVID2_DF_RGB24_888\n");
+ 		if (scfmt == FVID2_SF_PROGRESSIVE) {
+ 			frame->addr[FVID2_FRAME_ADDR_IDX] \
+ 				[FVID2_RGB_ADDR_IDX] = (void *)addr + offset;
+@@ -535,6 +661,7 @@
+ 		}
+ 	break;
+ 	default:
++		printk("## CAPT: Unrecognized format for set buffer\n");
+ 		BUG();
+ 	}
+ 	if (r)
+@@ -547,6 +674,7 @@
+ {
+ 	int r = 0;
+ 
++	printk("## CAPT: going to fail here due to bad input format\n");
+ 	VPSSDBG("check format\n");
+ 	if (FVID2_DF_YUV422I_YUYV != fmt->dataformat &&
+ 		FVID2_DF_YUV420SP_UV != fmt->dataformat &&
+@@ -604,6 +732,17 @@
+ 		cctrl->isfmtset = 1;
+ 	}
+ 
++	printk("## --- IN CAPTURE_SET_FORMAT\n");
++	printk("## -------------------\n");
++	printk("## width:      %u\n",fmt->width);
++	printk("## height:     %u\n",fmt->height);
++	printk("## pitch[0]:   %u\n",fmt->pitch[0]);
++	printk("## pitch[1]:   %u\n",fmt->pitch[1]);
++	printk("## pitch[2]:   %u\n",fmt->pitch[2]);
++	printk("## dataformat: %u\n",fmt->dataformat);
++	printk("## bpp:		   %u\n",fmt->bpp);
++	printk("## -------------------\n");
++
+ 	if (r)
+ 		VPSSERR("failed to set format\n");
+ 
+@@ -716,6 +855,11 @@
+ 	size += sizeof(struct Vps_CaptOneCallBackPerFrm);
+ 	size += sizeof(struct Vps_CaptStoragePrms);
+ 
++	printk("Adding mem space for iss struct\n");
++	size += sizeof(struct Iss_CaptCreateParams);
++	size += sizeof(struct Iss_CaptCreateStatus);
++	size += sizeof(struct Iss_CaptFrameSkip);
++
+ 	size += sizeof(struct fvid2_cbparams);
+ 	size += sizeof(struct fvid2_framelist) *VIDEO_MAX_FRAME;
+ 	size += sizeof(struct fvid2_frame) *VIDEO_MAX_FRAME;
+@@ -731,9 +875,15 @@
+ 	cctrl->ccparams = (struct Vps_CaptCreateParams *)
+ 			setaddr(pinfo, buf_offset, &cctrl->ccp_phy,
+ 				sizeof(struct Vps_CaptCreateParams));
++
++	cctrl->issccparams = (struct Iss_CaptCreateParams *)
++			setaddr(pinfo, buf_offset, &cctrl->issccp_phy,
++				sizeof(struct Iss_CaptCreateParams));
++
+ 	cctrl->vipcfg = (struct Vps_VipConfig *)
+ 			setaddr(pinfo, buf_offset, &cctrl->vipcfg_phy,
+ 				sizeof(struct Vps_VipConfig));
++
+ 	cctrl->vipportcfg = (struct Vps_VipPortConfig *)
+ 			setaddr(pinfo, buf_offset, &cctrl->vipportcfg_phy,
+ 				sizeof(struct Vps_VipPortConfig));
+@@ -742,6 +892,10 @@
+ 			setaddr(pinfo, buf_offset, &cctrl->ccs_phy,
+ 				sizeof(struct Vps_CaptCreateStatus));
+ 
++	cctrl->issccstatus = (struct Iss_CaptCreateStatus *)
++			setaddr(pinfo, buf_offset, &cctrl->issccs_phy,
++				sizeof(struct Iss_CaptCreateStatus));
++
+ 	cctrl->crtparam = (struct Vps_CaptRtParams *)
+ 			setaddr(pinfo, buf_offset, &cctrl->crtp_phy,
+ 				sizeof(struct Vps_CaptRtParams));
+@@ -758,6 +912,10 @@
+ 			setaddr(pinfo, buf_offset, &cctrl->cfrmskip_phy,
+ 				sizeof(struct Vps_CaptFrameSkip));
+ 
++	cctrl->isscfrmskip = (struct Iss_CaptFrameSkip *)
++			setaddr(pinfo, buf_offset, &cctrl->isscfrmskip_phy,
++				sizeof(struct Iss_CaptFrameSkip));
++
+ 	cctrl->covlflowstat = (struct Vps_CaptOverFlowStatus *)
+ 			setaddr(pinfo, buf_offset, &cctrl->covlflowstat_phy,
+ 				sizeof(struct Vps_CaptOverFlowStatus));
+@@ -818,6 +976,7 @@
+ 	struct vps_capt_ctrl *cctrl;
+ 	struct vps_isr_data *isrd, *new;
+ 
++	printk("## VIN: registering isr, idx %u\n",idx);
+ 	cctrl = vps_capt_get_ctrl(idx);
+ 	if (cctrl == NULL)
+ 		return -EINVAL;
+@@ -869,6 +1028,8 @@
+ 
+ void __init vps_fvid2_capt_ctrl_init(struct vps_capt_ctrl *cctrl)
+ {
++	struct Iss_CaptScParams *pScParams;
++	struct Iss_CaptOutInfo *pVipOutPrm;
+ 	int i;
+ 	/*create paramters*/
+ 
+@@ -946,6 +1107,308 @@
+ 	cctrl->fmt.dataformat = FVID2_DF_YUV422P;
+ 	cctrl->fmt.scanformat = FVID2_SF_PROGRESSIVE;
+ 	cctrl->fmt.bpp = 16;
++
++	/* If we are going to set ISS init capture parameters */
++	if (cctrl->capt_num == 4){
++
++		printk("## --- Setting ISS capture parameters\n");
++		printk("## iss capture mode\n");
++
++		cctrl->fmt.dataformat = FVID2_DF_YUV422I_UYVY;
++		cctrl->fmt.scanformat = FVID2_SF_INTERLACED;
++
++		cctrl->issccparams->videoCaptureMode = ISS_CAPT_VIDEO_CAPTURE_MODE_SINGLE_STREAM;
++		cctrl->issccparams->videoIfMode = ISS_CAPT_YUV_8BIT;
++		cctrl->issccparams->inDataFormat = FVID2_DF_YUV422P;
++		cctrl->issccparams->periodicCallbackEnable = false;
++		cctrl->issccparams->numCh = 1;
++		cctrl->issccparams->vsEnable = false;
++		cctrl->issccparams->vsDemoEnable = false;
++		cctrl->issccparams->glbcEnable = 0;		//TODO check gGLBCEnable
++		cctrl->issccparams->numStream = 1;
++		cctrl->issccparams->pitch[0] = 1920;
++		cctrl->issccparams->pitch[1] = 720;
++
++		/* Config Out Stream Info for first stream*/
++
++		printk("## iss out stream info\n");
++		pVipOutPrm = &cctrl->issccparams->outStreamInfo[0];
++		pVipOutPrm->dataFormat = FVID2_DF_YUV422I_UYVY;
++		pVipOutPrm->memType = VPS_VPDMA_MT_NONTILEDMEM;
++		pVipOutPrm->pitch[0] = 1920 * 2;
++		pVipOutPrm->pitch[1] = 1920 * 2;
++		pVipOutPrm->pitch[2] = 0;
++		pVipOutPrm->scEnable = false;
++        pVipOutPrm->subFrameModeEnable = false;
++        pVipOutPrm->numLinesInSubFrame = 0;
++        pVipOutPrm->subFrameCb = NULL;
++
++		/* Config Out Stream Info for second stream*/
++
++		printk("## iss out stream info\n");
++		pVipOutPrm = &cctrl->issccparams->outStreamInfo[1];
++		pVipOutPrm->dataFormat = FVID2_DF_YUV420SP_UV;
++		pVipOutPrm->memType = VPS_VPDMA_MT_NONTILEDMEM;
++		pVipOutPrm->pitch[0] = 720 * 2;
++		pVipOutPrm->pitch[1] = 720 * 2;
++		pVipOutPrm->pitch[2] = 0;
++		pVipOutPrm->scEnable = false;
++        pVipOutPrm->subFrameModeEnable = false;
++        pVipOutPrm->numLinesInSubFrame = 0;
++        pVipOutPrm->subFrameCb = NULL;
++
++		/* Config Scaler Parameters for first stream */
++
++		pScParams = &cctrl->issccparams->scParams[0];
++		pScParams->inWidth = 1920;
++        pScParams->inHeight = 1080;
++        pScParams->inCropCfg.cropStartX = 0;
++        pScParams->inCropCfg.cropStartY = 0;
++        pScParams->inCropCfg.cropWidth 	= pScParams->inWidth;
++        pScParams->inCropCfg.cropHeight = pScParams->inHeight;
++        pScParams->outWidth = 1920;
++        pScParams->outHeight = 1080;
++        pScParams->InStartX = 0;
++		pScParams->InStartY = 0;
++        pScParams->OutStartX = 16;
++		pScParams->OutStartY = 18;
++		pScParams->scConfig = NULL;
++        pScParams->scCoeffConfig = NULL;
++
++		/* Config Scaler Parameters for second stream */
++
++		pScParams = &cctrl->issccparams->scParams[1];
++		pScParams->inWidth = 1920;
++        pScParams->inHeight = 1080;
++        pScParams->inCropCfg.cropStartX = 0;
++        pScParams->inCropCfg.cropStartY = 0;
++        pScParams->inCropCfg.cropWidth 	= pScParams->inWidth;
++        pScParams->inCropCfg.cropHeight = pScParams->inHeight;
++        pScParams->outWidth = 720;
++        pScParams->outHeight = 480;
++        pScParams->InStartX = 0;
++		pScParams->InStartY = 0;
++        pScParams->OutStartX = 16;
++		pScParams->OutStartY = 18;
++		pScParams->scConfig = NULL;
++        pScParams->scCoeffConfig = NULL;
++
++		printk("## iss channel num map\n");
++		cctrl->issccparams->channelNumMap[0][0] =
++					Iss_captMakeChannelNum(ISS_CAPT_INST_CSI, 0, 0);
++
++		cctrl->issccparams->SensorHandle = NULL;
++		cctrl->issccparams->aewbVendor = AEWB_ID_NONE;
++		cctrl->issccparams->aewbMode = AEWB_OFF;
++		cctrl->issccparams->aewbPriority = PRIORITY_FRAMERATE;
++		cctrl->issccparams->captureMode = ISS_CAPT_INMODE_ISIF;
++		cctrl->issccparams->vsProcessFunc = NULL;
++
++		printk("## iss capture create parameters done\n");
++		/*printk("## --- Setting ISS capture parameters\n");
++		cctrl->issccparams->videoCaptureMode = ISS_CAPT_VIDEO_CAPTURE_MODE_SINGLE_STREAM;
++		cctrl->issccparams->videoIfMode = ISS_CAPT_BAYER_12BIT;
++		cctrl->issccparams->inDataFormat = FVID2_DF_YUV420SP_UV;
++		cctrl->issccparams->periodicCallbackEnable = false;
++		cctrl->issccparams->numCh = 1;
++		cctrl->issccparams->numStream = 2;
++
++		printk("## stream configs\n");
++		for (StreamId = 0; StreamId < cctrl->issccparams->numStream; StreamId++)
++		{
++			//pOutPrm = &pInstPrm->outParams[StreamId];
++			pScParams[StreamId] = &cctrl->issccparams->scParams[StreamId];
++			pScParams[StreamId]->inWidth = 1920;
++			pScParams[StreamId]->inHeight = 1080;
++			pScParams[StreamId]->inCropCfg.cropStartX = 0;
++			pScParams[StreamId]->inCropCfg.cropStartY = 0;
++			pScParams[StreamId]->inCropCfg.cropWidth = pScParams[StreamId]->inWidth;
++			pScParams[StreamId]->inCropCfg.cropHeight = pScParams[StreamId]->inHeight;
++			pScParams[StreamId]->outWidth = 1920;
++			pScParams[StreamId]->outHeight = 1080;
++
++			cctrl->issccparams->pitch[StreamId] = 1920;
++			//if ((StreamId == 0) && (gCameraLink_obj.cctrl->issccparams.vnfFullResolution))
++			if (StreamId == 0) //TODO check this statement
++			{
++				cctrl->issccparams->pitch[StreamId] += 64;
++				pScParams[StreamId]->OutStartX = 16;
++				pScParams[StreamId]->OutStartY = 18;
++			}
++
++			if (gVstabEnable == 1)
++			{
++				if((gvsDemoEnable == 1) && (StreamId == 1))
++				{
++					cctrl->issccparams->pitch[StreamId] = pOutPrm->scOutWidth;
++				}
++				else
++				cctrl->issccparams->pitch[StreamId] = (pOutPrm->scOutWidth * VSTAB_SCALE_NUMERATOR)/VSTAB_SCALE_DENOMINATOR;
++			}
++
++			pScParams[StreamId]->scConfig = NULL;
++			pScParams[StreamId]->scCoeffConfig = NULL;
++		}
++
++		printk("## output configs\n");
++		for (StreamId = 0; StreamId < ISS_CAPT_STREAM_ID_MAX; StreamId++)
++		{
++			pOutInfo = &cctrl->issccparams->outStreamInfo[StreamId];
++
++			pOutInfo->memType = ISS_TILEDMEM;//ISS_NONTILEDMEM;
++
++			pOutInfo->dataFormat = FVID2_DF_INVALID;
++
++			pOutInfo->scEnable = false;
++			pOutInfo->subFrameModeEnable = false;
++			pOutInfo->numLinesInSubFrame = 0;
++			pOutInfo->subFrameCb = NULL;
++
++			if (StreamId == 0 || StreamId == 1)
++			{
++				pOutInfo->dataFormat = FVID2_DF_YUV420SP_UV;
++			}
++
++			for (chId = 0; chId < ISS_CAPT_CH_PER_PORT_MAX; chId++)
++			{
++				cctrl->issccparams->channelNumMap[StreamId][chId] =
++					Iss_captMakeChannelNum(0, StreamId, chId);
++			}
++		}
++
++		pVipCreateArgs->inDataFormat = SYSTEM_DF_YUV420SP_UV;
++		if (pVipCreateArgs->inDataFormat == FVID2_DF_RGB24_888)
++		{
++			pVipCreateArgs->videoCaptureMode =
++				ISS_CAPT_VIDEO_CAPTURE_MODE_SINGLE_STREAM;
++			pVipCreateArgs->videoIfMode = ISS_CAPT_BAYER_12BIT;
++		}
++		else
++		{
++			pVipCreateArgs->videoCaptureMode =
++				ISS_CAPT_VIDEO_CAPTURE_MODE_SINGLE_STREAM;
++			pVipCreateArgs->videoIfMode = ISS_CAPT_BAYER_12BIT;
++		}
++
++		pVipCreateArgs->numCh = 1;
++		pVipCreateArgs->vsEnable = false;
++		pVipCreateArgs->vsDemoEnable = false;
++		pVipCreateArgs->glbcEnable = 1;		//TODO check gGLBCEnable
++
++		Vps_printf("## CAMERA: %s camera mode is [%s, %s] !!! \n",
++               gCameraLink_portName[pInstPrm->vipInstId],
++               gCameraLink_ifName[pVipCreateArgs->videoIfMode],
++               gCameraLink_modeName[pVipCreateArgs->videoCaptureMode]);
++
++		pVipCreateArgs->periodicCallbackEnable = true;
++		pVipCreateArgs->numStream = 1;
++
++		for (outId = 0; outId < pVipCreateArgs->numStream; outId++)
++		{
++			pVipOutPrm = &pVipCreateArgs->outStreamInfo[outId];
++			//pOutPrm = &pInstPrm->outParams[outId];
++
++			pVipOutPrm->dataFormat = FVID2_DF_BAYER_RAW; //TODO check SYSTEM_DF_BAYER_RAW;
++
++			pVipOutPrm->memType = VPS_VPDMA_MT_NONTILEDMEM;
++
++			(pObj->createArgs.tilerEnable)
++			{
++				pVipOutPrm->memType = VPS_VPDMA_MT_TILEDMEM;
++			}
++
++			pVipOutPrm->pitch[0] = 1920;
++
++			//if ((outId == 0) && (pObj->createArgs.vnfFullResolution))
++			if (outId == 0)	//TODO check this statement
++				pVipOutPrm->pitch[0] += 64;
++
++			if(gVstabEnable == 1)
++			{
++				if((gvsDemoEnable == 1) && (outId == 1))
++				{
++					pVipOutPrm->pitch[0] = 1920;
++				}
++				pVipOutPrm->pitch[0] = (1920 * VSTAB_SCALE_NUMERATOR)/VSTAB_SCALE_DENOMINATOR;
++			}
++
++			if(pVipOutPrm->dataFormat != FVID2_DF_BAYER_RAW)
++			{
++				if (pInstPrm->outParams[0].scOutHeight > 1080)
++				{
++					gCameraLink_framesPerChannel = CAMERA_LINK_FRAMES_PER_CH_HIGH_RESOLUTION;
++				}
++				else
++				{
++					gCameraLink_framesPerChannel = CAMERA_LINK_FRAMES_PER_CH;
++				}
++			}
++			else
++			{
++				gCameraLink_framesPerChannel = CAMERA_LINK_FRAMES_PER_CH_RAW;
++			}
++
++			if ((pVipOutPrm->dataFormat == FVID2_DF_YUV422I_UYVY) ||
++				(pVipOutPrm->dataFormat == FVID2_DF_YUV422I_YUYV) ||
++				(pVipOutPrm->dataFormat == FVID2_DF_YUV422I_YVYU) ||
++				(pVipOutPrm->dataFormat == FVID2_DF_YUV422I_VYUY) ||
++				(pVipOutPrm->dataFormat == FVID2_DF_BAYER_RAW))
++				pVipOutPrm->pitch[0] *= 2;
++			if (pVipOutPrm->dataFormat == FVID2_DF_RGB24_888)
++				pVipOutPrm->pitch[0] *= 3;
++			pVipOutPrm->pitch[1] = pVipOutPrm->pitch[0];
++
++			if (CameraLink_drvIsDataFormatTiled(pVipCreateArgs, outId))
++			{
++				pVipOutPrm->pitch[0] = VPSUTILS_TILER_CNT_8BIT_PITCH;
++				pVipOutPrm->pitch[1] = VPSUTILS_TILER_CNT_16BIT_PITCH;
++			}
++
++			pVipOutPrm->pitch[2] = 0;
++
++			pVipOutPrm->scEnable = false;
++
++			for (chId = 0; chId < pVipCreateArgs->numCh; chId++)
++			{
++				queId = pOutPrm->outQueId;
++				queChId = pObj->info.queInfo[queId].numCh;
++
++				pQueChInfo = &pObj->info.queInfo[queId].chInfo[queChId];
++
++				pQueChInfo->dataFormat = (FVID2_DataFormat) pVipOutPrm->dataFormat;
++				pQueChInfo->memType = (Vps_VpdmaMemoryType) pVipOutPrm->memType;
++
++				if (pVipOutPrm->scEnable)
++				{
++					pQueChInfo->width = pOutPrm->scOutWidth;
++					pQueChInfo->height = pOutPrm->scOutHeight;
++				}
++				else
++				{
++					pQueChInfo->width    = pOutPrm->scOutWidth;
++					pQueChInfo->height   = pOutPrm->scOutHeight;
++					pQueChInfo->pitch[0] = pVipOutPrm->pitch[0];
++					pQueChInfo->pitch[1] = pVipOutPrm->pitch[1];
++				}
++
++				if ((queId == 0) && (pObj->createArgs.vnfFullResolution))
++				{
++					pQueChInfo->width += 32;
++					pQueChInfo->height += 32;
++				}
++
++				pQueChInfo->pitch[2] = 0;
++				pQueChInfo->scanFormat = inScanFormat;
++
++				pObj->info.queInfo[queId].numCh++;
++
++				pVipCreateArgs->channelNumMap[outId][chId] =
++					CameraLink_makeChannelNum(queId, queChId);
++			}
++		}*/
++
++
++	}
+ }
+ 
+ static void vps_capt_add_ctrl(struct vps_capt_ctrl *cctrl)
+@@ -997,6 +1460,7 @@
+ 	u32 size = 0;
+ 	u32 offset = 0;
+ 	VPSSDBG("cap init\n");
++	printk("## --- Starting vpss_init\n");
+ 
+ 	INIT_LIST_HEAD(&cctrl_list);
+ 
+@@ -1038,8 +1502,9 @@
+ 		assign_payload_addr(capctrl, pinfo, &offset);
+ 		/*init cap control*/
+ 		capctrl->capt_num = i;
++		printk("## creating capture control structure #%d\n",i);
+ 		vps_fvid2_capt_ctrl_init(capctrl);
+-
++		printk("## adding capture control structure #%d to cctrl_list\n",i);
+ 		vps_capt_add_ctrl(capctrl);
+ 		mutex_init(&capctrl->cmutex);
+ 		spin_lock_init(&capctrl->buf_irqlock);
+Index: kernel/linux-2.6.37-psp04.04.00.01/include/linux/ti81xx.h
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/include/linux/ti81xx.h	2014-10-24 15:14:21.515411345 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/include/linux/ti81xx.h	2014-10-24 15:14:21.471411346 -0600
+@@ -10,7 +10,7 @@
+ #define TVP5150_INST0 "tvp5150"
+ /*#define OV5640_INST0  "tvp7002"*/
+ #define TVP7002_INST1 "tvp7002"
+-#define TI81XXVIN_NUM_INSTANCES		4
++#define TI81XXVIN_NUM_INSTANCES		5
+ 
+ 
+ struct ti81xxvin_interface {
+Index: kernel/linux-2.6.37-psp04.04.00.01/include/linux/vps_capture.h
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/include/linux/vps_capture.h	2014-10-24 15:14:21.515411345 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/include/linux/vps_capture.h	2014-10-24 15:14:21.471411346 -0600
+@@ -42,17 +42,27 @@
+ /** \brief Capture instance - VIP1 - Port B  */
+ #define VPS_CAPT_INST_VIP1_PORTB (3u)
+ 
++/** \brief ISS Driver Capture Instace for   */
++//#define ISS_CAPT_INST_CSI	 (4u)
++
++
+ /** \brief Capture instance - VIP ALL  */
+ #define VPS_CAPT_INST_VIP_ALL    (0xFFu)
+ 
+ /** \brief Capture instance - MAX instances  */
+-#define VPS_CAPT_INST_MAX        (4u)
++#define VPS_CAPT_INST_MAX        (5u)
++
++/** \brief Capture instance - MAX instances  */
++#define ISS_CAPT_INST_MAX        (1u)
++
++/** \brief Total Capture Instances */
++#define VPS_CAPT_TOTAL_INSTANCE     (VPS_CAPT_INST_MAX + ISS_CAPT_INST_MAX)
+ 
+ /** \brief Maximun channels that can be captured per port */
+ #define VPS_CAPT_CH_PER_PORT_MAX       (16u)
+ 
+ /** \brief Maximun channels that can be captured in the system */
+-#define VPS_CAPT_CH_MAX       (VPS_CAPT_CH_PER_PORT_MAX*VPS_CAPT_INST_MAX)
++#define VPS_CAPT_CH_MAX       (VPS_CAPT_CH_PER_PORT_MAX*VPS_CAPT_TOTAL_INSTANCE)
+ 
+ /** \brief Maximum frames that can be queued per channel */
+ #define VPS_CAPT_FRAME_QUE_LEN_PER_CH_MAX  (16u)
+@@ -368,6 +378,10 @@
+  */
+ #define IOCTL_VPS_CAPT_GET_VIP_CROP_CFG     (VPS_CAPT_IOCTL_BASE + 0x0010u)
+ 
++#define ISS_CAPT_IOCTL_BASE             (FVID2_USER_BASE + 0x10020000u)
++
++#define IOCTL_ISS_CAPT_RESET_CSI          (ISS_CAPT_IOCTL_BASE + 0x0004u)
++
+ /* @} */
+ 
+ /**
+Index: kernel/linux-2.6.37-psp04.04.00.01/include/linux/vps.h
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/include/linux/vps.h	2014-10-24 15:14:21.515411345 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/include/linux/vps.h	2014-10-24 15:14:21.507411345 -0600
+@@ -54,10 +54,8 @@
+ #define FVID2_VPS_DISP_DRV              (VPS_DISP_DRV_BASE + 0x00000001u)
+ /** \brief Graphics display driver ID used at the time of FVID2 create. */
+ #define FVID2_VPS_DISP_GRPX_DRV         (VPS_DISP_DRV_BASE + 0x00000002u)
+-
+ /** \brief VIP capture driver ID used at the time of FVID2 create. */
+ #define FVID2_VPS_CAPT_VIP_DRV          (VPS_CAPT_DRV_BASE + 0x00000000u)
+-
+ /** \brief Noise Filter M2M driver ID used at the time of FVID2 create. */
+ #define FVID2_VPS_M2M_NSF_DRV           (VPS_M2M_DRV_BASE + 0x00000000u)
+ /** \brief Scalar Writeback M2M driver ID used at the time of FVID2 create. */
+Index: kernel/linux-2.6.37-psp04.04.00.01/arch/arm/mach-omap2/include/mach/capt.h
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/arch/arm/mach-omap2/include/mach/capt.h	2014-10-24 15:14:21.515411345 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/arch/arm/mach-omap2/include/mach/capt.h	2014-10-24 15:14:21.507411345 -0600
+@@ -27,6 +27,27 @@
+ 
+ typedef void (*capt_complete_callback_t)(void *arg);
+ 
++enum AEWB_VENDOR{
++    AEWB_ID_NONE = 0,
++    AEWB_ID_APPRO,
++    AEWB_ID_TI,
++    AEWB_ID_MAXNUM = 3
++};
++
++enum AEWB_MODE{
++    AEWB_OFF = 0,
++    AEWB_AE,
++    AEWB_AWB,
++    AEWB_AEWB,
++    AEWB_MODE_MAXNUM
++};
++
++enum AEWB_PRIORITY{
++    PRIORITY_FRAMERATE = 0,
++    PRIORITY_EXPOSURE,
++    PRIORITY_MAXNUM
++};
++
+ struct vps_capt_ctrl {
+ 	/* Kobject for registering with kernel */
+ 	struct kobject                  kobj;
+@@ -46,6 +67,9 @@
+ 	/*create params*/
+ 	struct Vps_CaptCreateParams     *ccparams;
+ 	u32                             ccp_phy;
++	/*ISS create params*/
++	struct Iss_CaptCreateParams     *issccparams;
++	u32                             issccp_phy;
+ 	/* VIP  params */
+ 	struct Vps_VipConfig		*vipcfg;
+ 	u32				vipcfg_phy;
+@@ -55,6 +79,9 @@
+ 	/*create status*/
+ 	struct Vps_CaptCreateStatus     *ccstatus;
+ 	u32                             ccs_phy;
++	/*ISS create status*/
++	struct Iss_CaptCreateStatus     *issccstatus;
++	u32                             issccs_phy;
+ 	/*scaling coeff*/
+ 	struct vps_captsccoeff          *csccoeff;
+ 	u32                             csccoff_phy;
+@@ -70,6 +97,9 @@
+ 	/* Frameskip */
+ 	struct Vps_CaptFrameSkip	*cfrmskip;
+ 	u32				cfrmskip_phy;
++	/* ISS Frameskip */
++	struct Iss_CaptFrameSkip	*isscfrmskip;
++	u32				isscfrmskip_phy;
+ 	/* OverFlow staus */
+ 	struct Vps_CaptOverFlowStatus	*covlflowstat;
+ 	u32				covlflowstat_phy;
+Index: kernel/linux-2.6.37-psp04.04.00.01/drivers/media/video/ti81xx/ti81xxvid_main.c
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/drivers/media/video/ti81xx/ti81xxvid_main.c	2014-10-24 15:14:21.515411345 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/drivers/media/video/ti81xx/ti81xxvid_main.c	2014-10-24 15:14:21.507411345 -0600
+@@ -584,6 +584,7 @@
+ 	int left, top;
+ 	bool crop = 0;
+ 	u8 fidmeg;
++	struct vps_cropconfig  dei_sc_crop_cfg;
+ 	struct vps_dei_disp_params deiprms;
+ 	if (video_mode_to_vpss_mode(vout, &dfmt) == -EINVAL) {
+ 		v4l2_err(&vout->vid_dev->v4l2_dev,
+@@ -646,10 +647,10 @@
+ 		ret = -EINVAL;
+ 		goto error;
+ 	}
+-	if (vctrl->set_format(vctrl, &ffmt)) {
+-		ret = -EINVAL;
+-		goto error;
+-	}
++	//if (vctrl->set_format(vctrl, &ffmt)) {
++	//	ret = -EINVAL;
++	//	goto error;
++	//}
+ 	if (crop && (vctrl->caps & VPSS_VID_CAPS_CROPING)) {
+ 		if (vctrl->set_crop(vctrl, vout->crop.left,
+ 		    vout->crop.top, vout->pix.bytesperline,
+@@ -664,6 +665,10 @@
+ 		deiprms.scenable = scalar_prms.scalar_enable;
+ 		deiprms.startx = vout->crop.left;
+ 		deiprms.starty = vout->crop.top;
++		deiprms.deisccropcfg = &dei_sc_crop_cfg;
++		deiprms.sccfg.bypass = !scalar_prms.scalar_enable;
++		deiprms.deisccropcfg->cropstartx = vout->crop.left;
++		deiprms.deisccropcfg->cropstarty = vout->crop.top;
+ 		if (vctrl->set_deiparams(vctrl, &deiprms, outw, outh)) {
+ 			ret = -EINVAL;
+ 			goto error;
+@@ -692,6 +697,10 @@
+ 			}
+ 		}
+ 	}
++	if (vctrl->set_format(vctrl, &ffmt)) {
++		ret = -EINVAL;
++		goto error;
++	}
+ 
+ 	v4l2_dbg(1, debug, &vout->vid_dev->v4l2_dev,
+ 		"VIDOUT%d: enable=%d width=%d\n height=%d color_mode=%d\n"
+@@ -1153,6 +1162,8 @@
+ 	if (vout == NULL)
+ 		return -ENODEV;
+ 
++	printk("## VIDOUT%d: opening display dev\n",vout->vid);
++
+ 	/*get the vpss control*/
+ 	vctrl = vout->vctrl;
+ 	if (vctrl == NULL)
+@@ -1919,6 +1930,7 @@
+ 	struct vps_video_ctrl *vctrl = vout->vctrl;
+ 	struct videobuf_buffer *buf;
+ 
++	printk("## VIDOUT%d: starting_streamon\n",vout->vid);
+ 	v4l2_dbg(1, debug, &vout->vid_dev->v4l2_dev,
+ 		"VIDOUT%d: stream on\n",
+ 		vout->vid);
+@@ -1940,9 +1952,12 @@
+ 		goto error0;
+ 	}
+ 
++	printk("## VIDOUT%d: ti81xxvid_init\n",vout->vid);
+ 	ret = ti81xxvid_init(vout);
+ 	if (ret)
+ 		goto error0;
++
++	printk("## VIDOUT%d: videobuf_streamon\n",vout->vid);
+ 	ret = videobuf_streamon(q);
+ 	if (ret)
+ 		goto error0;
+@@ -1986,7 +2001,9 @@
+ 
+ 	vout->first_int = 1;
+ 
++	printk("## VIDOUT%d: vps_video_register_isr\n",vout->vid);
+ 	vps_video_register_isr(ti81xx_vidout_isr, vout, vout->vid);
++	printk("## VIDOUT%d: vctrl->start\n",vout->vid);
+ 	ret = vctrl->start(vctrl);
+ 	if (ret)
+ 		vps_video_unregister_isr(ti81xx_vidout_isr, vout, vout->vid);
+Index: kernel/linux-2.6.37-psp04.04.00.01/include/linux/vps_display.h
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/include/linux/vps_display.h	2014-10-24 15:14:21.515411345 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/include/linux/vps_display.h	2014-10-24 15:14:21.507411345 -0600
+@@ -160,6 +160,10 @@
+ 	/**< Horizontal start position in pixels. */
+ 	u32                            starty;
+ 	/**< Vertical start position in lines. */
++	struct vps_posconfig           *posCfg;
++	/**< Position configuration used to position the PIP window.
++	* Only used if VCOMP is available in the display path,
++	* Otherwise it is ignored. */
+ 	u32                            sctarwidth;
+ 	/**< Target image Width(o/p of scalar).User should provide
+ 	this data even if scalar is in bypass. If scalar is in bypass
+@@ -170,6 +174,12 @@
+ 	this data even if scalar is in bypass. If scalar is in bypass
+ 	this is used to program the VPDMA, if scalar is enabled scalar IP
+ 	will be programmed to output this resolution */
++	u32                            comprenable;
++	/**< Enable compression/decompression for writing back the DEI context
++	to and from DDR. COMPR is not available in TI814X/TI813X platform,
++	hence this is not used for above platforms. And for TI816X, this
++	feature is not supported. Hence this flag should be always set to
++	FALSE. */
+ };
+ 
+ /**
+Index: kernel/linux-2.6.37-psp04.04.00.01/drivers/video/ti81xx/vpss/fvid2.c
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/drivers/video/ti81xx/vpss/fvid2.c	2014-10-24 15:14:21.515411345 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/drivers/video/ti81xx/vpss/fvid2.c	2014-10-24 15:14:21.507411345 -0600
+@@ -576,7 +576,7 @@
+ int vps_fvid2_dequeue(void *handle,
+ 		      struct fvid2_framelist *framelist,
+ 		      u32 stream_id,
+-		      u32 timeout)
++		      u32 timeout) // NO TIMEOUT = 0
+ {
+ 	struct vps_fvid2_ctrl *fctrl = (struct vps_fvid2_ctrl *)handle;
+ 	int status;
+@@ -599,6 +599,7 @@
+ 	fctrl->dqcmdprms->cmdtype = VPS_FVID2_CMDTYPE_SIMPLEX;
+ 	fctrl->dqcmdprms->simplexcmdarg = (void *)fctrl->fdqprms_phy;
+ 
++	//printk("## FVID2: sending message to M3\n");
+ 
+ 	/* send event to proxy in M3*/
+ 	#ifdef CONFIG_TI81XX_VPSS_SYSNLINK_NOTIFY
+@@ -616,13 +617,16 @@
+ 	#endif
+ 
+ 	if (status < 0) {
++		printk("## FVID2: message failed to deliver 0x%08x\n", status);
+ 		VPSSERR("send DQ event status 0x%08x\n", status);
+ 		return -EINVAL;
+ 	} else {
++		//printk("## FVID2: message reception ok 0x%08x\n");
+ 		do_gettimeofday(&stime);
+ 		etime = stime;
+ 		while (fctrl->fdqprms->returnvalue ==
+ 			VPS_FVID2_M3_INIT_VALUE) {
++			//printk("## FVID2: in reception loop\n");
+ 			usleep_range(100, 300);
+ 			/*time out check*/
+ 			if (vps_timeout) {
+@@ -636,6 +640,8 @@
+ 		}
+ 	}
+ 
++	//printk("## FVID2: dequeue status from M3 %u within %u ms\n",
++		//fctrl->fdqprms->returnvalue, td);
+ 	VPSSDBG("dequeue event return %d within %d ms\n",
+ 		fctrl->fdqprms->returnvalue,
+ 		td);
+Index: kernel/linux-2.6.37-psp04.04.00.01/include/linux/iss.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ kernel/linux-2.6.37-psp04.04.00.01/include/linux/iss.h	2014-10-24 15:14:21.507411345 -0600
+@@ -0,0 +1,438 @@
++/** ==================================================================
++ *  @file   iss.h
++ *
++ *  @path   /ti/psp/iss/
++ *
++ *  @desc   This  File contains.
++ * ===================================================================
++ *  Copyright (c) Texas Instruments Inc 2011, 2012
++ *
++ *  Use of this software is controlled by the terms and conditions found
++ *  in the license agreement under which this software has been supplied
++ * ===================================================================*/
++
++/**
++ * \defgroup ISS_DRV_FVID2_ISS_COMMON ISS - Common API
++ *
++ * @{
++ */
++
++/**
++ *  \file vps.h
++ *
++ *  \brief ISS - Common API
++ */
++#ifndef _ISS_H
++#define _ISS_H
++
++/* ==========================================================================
++ */
++/* Include Files */
++/* ==========================================================================
++ */
++
++//#include <ti/sysbios/BIOS.h>
++#include <linux/fvid2.h>
++//#include <string.h>
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++    /* ==========================================================================
++     */
++    /* Macros & Typedefs */
++    /* ==========================================================================
++     */
++
++/** \brief HDVPSS driver version string. */
++#define ISS_VERSION_STRING              "ISS_01_00_07_00"
++
++/** \brief HDVPSS driver version number. */
++#define ISS_VERSION_NUMBER              (0x01000700u)
++
++/** \brief Driver ID base for the capture driver class. */
++#define ISS_CAPT_DRV_BASE               (0x10000100u)
++
++/** \brief Driver ID base for the M2M driver class. */
++#define ISS_M2M_DRV_BASE                (0x10000200u)
++
++/** \brief Driver ID base for video  encoder driver class. */
++#define ISS_SENSOR_DRV_BASE             (0x10000500u)
++
++/** \brief Driver ID base for platform driver class. */
++#define ISS_VID_SYSTEM_DRV_BASE         (0x10000600u)
++
++/** \brief Driver ID base for the custom/user driver class. */
++#define ISS_USER_DRV_BASE               (0x10001000u)
++
++/** \brief VIP capture driver ID used at the time of FVID2 create. */
++#define FVID2_ISS_CAPT_DRV          	(ISS_CAPT_DRV_BASE + 0x00000000u)
++
++/** \brief Scalar Writeback M2M driver ID used at the time of FVID2 create. */
++#define FVID2_ISS_M2M_SC_DRV            (ISS_M2M_DRV_BASE + 0x00000001u)
++
++/** \brief Post Process M2M driver ID used at the time of FVID2 create. */
++#define FVID2_ISS_M2M_ISP_DRV           (ISS_M2M_DRV_BASE + 0x00000002u)
++
++#define ISS_H3A_SIZE 					(0u) //3110400u)
++#define ISS_BSC_SIZE 					(0u) //8192*2)
++#define ISS_HST_SIZE 					(0u)
++#define ISS_CAR_SIZE 					(0u)
++
++#define BLANKING_DATA_SIZE				(ISS_H3A_SIZE + ISS_BSC_SIZE + ISS_HST_SIZE + ISS_CAR_SIZE)
++
++//#define VSTAB_MULT_COEFFICIENT	1.2
++#define VSTAB_SCALE_NUMERATOR		(6)
++#define VSTAB_SCALE_DENOMINATOR		(5)
++
++    /*
++     *  IOCTLs Base address.
++     */
++/** \brief IOCTL base address for the IOCTLs common to display, capture and
++ *  mem to mem drivers. */
++#define ISS_COMMON_IOCTL_BASE           (FVID2_USER_BASE + 0x10000000u)
++/** \brief IOCTL base address for the capture driver IOCTLs. */
++#define ISS_CAPT_IOCTL_BASE             (FVID2_USER_BASE + 0x10020000u)
++/** \brief IOCTL base address for the M2M driver IOCTLs. */
++#define ISS_M2M_IOCTL_BASE              (FVID2_USER_BASE + 0x10030000u)
++/** \brief IOCTL base address for the video  encoder driver IOCTLs. */
++#define ISS_SENSOR_IOCTL_BASE          	(FVID2_USER_BASE + 0x10070000u)
++/** \brief IOCTL base address for the video  platform driver IOCTLs. */
++#define ISS_VID_SYSTEM_IOCTL_BASE       (FVID2_USER_BASE + 0x10080000u)
++/**
++ *  \brief IOCTL base address for the advanced debug capabilities.
++ *  Caution: To be used with care.
++ */
++#define ISS_ADV_IOCTL_BASE              (FVID2_USER_BASE + 0x10070000u)
++
++/**
++ *  \brief VPS video buffer alignment. All application buffer address and
++ *  line pitch should be aligned to this byte boundary.
++ */
++#define ISS_BUFFER_ALIGNMENT            (16u)
++
++    /*
++     *  Common IOCTLS for display, M2M and capture drivers
++     */
++
++/**
++  \addtogroup ISS_DRV_FVID2_IOCTL_COMMON
++  @{
++*/
++
++/**
++ *  \brief Set the scalar coefficients.
++ *
++ *  \param cmdArgs       [IN]  const Iss_ScCoeffParams *
++ *  \param cmdStatusArgs [OUT] NULL
++ *
++ *  \return FVID_SOK on success, else failure
++ *
++*/
++#define IOCTL_ISS_SET_COEFFS            (ISS_COMMON_IOCTL_BASE + 0x0000u)
++
++    /* @} */
++
++    /*
++     *  Advanced IOCTLS for display, M2M and capture drivers.
++     */
++
++/**
++  \addtogroup ISS_DRV_FVID2_IOCTL_ADVANCED
++  @{
++*/
++
++/**
++ *  \brief Read the scalar hardware configuration.
++ *
++ *  This ioctl can be used to read the actual hardware registers of the
++ *  scalar.
++ *  This is for the advanced user for the hardware debug capability.
++ *  For the multiple channel mode of the driver data is returned from the
++ *  overlay memory instead of actual hardware registers.
++ *
++ *  \param cmdArgs       [OUT] Iss_ScRdWrAdvCfg *
++ *  \param cmdArgsStatus [OUT] NULL
++ *
++ *  \return FVID_SOK on success, else failure
++ *
++ */
++#define IOCTL_ISS_READ_ADV_SC_CFG       (ISS_ADV_IOCTL_BASE + 0x0000u)
++
++/**
++ *  \brief Write the scalar hardware configuration.
++ *
++ *  This ioctl can be used to write the actual hardware registers of the
++ *  scalar.
++ *  This is for the advanced user for the hardware debug capability.
++ *  For the multiple channel mode of the driver data is written to the
++ *  overlay memory instead of actual hardware registers.
++ *
++ *  \param cmdArgs       [IN]  const Iss_ScRdWrAdvCfg *
++ *  \param cmdArgsStatus [OUT] NULL
++ *
++ *  \return FVID_SOK on success, else failure
++ *
++ */
++#define IOCTL_ISS_WRITE_ADV_SC_CFG      (ISS_ADV_IOCTL_BASE + 0x0001u)
++
++/**
++ *  \brief Read the De-Interlacer hardware configuration.
++ *
++ *  This ioctl can be used to read the actual hardware registers of the
++ *  De-interlacer.
++ *  This is for the advanced user for the hardware debug capability.
++ *
++ *  \param cmdArgs       [OUT] Iss_DeiRdWrAdvCfg *
++ *  \param cmdArgsStatus [OUT] NULL
++ *
++ *  \return FVID_SOK on success, else failure
++ *
++ */
++#define IOCTL_ISS_READ_ADV_IPIPE_CFG       (ISS_ADV_IOCTL_BASE + 0x0012u)
++
++/**
++ *  \brief Write the De-Interlacer hardware configuration.
++ *
++ *  This ioctl can be used to write the actual hardware registers of the
++ *  De-interlacer.
++ *  This is for the advanced user for the hardware debug capability.
++ *
++ *  \param cmdArgs       [IN]  const Iss_DeiRdWrAdvCfg *
++ *  \param cmdArgsStatus [OUT] NULL
++ *
++ *  \return FVID_SOK on success, else failure
++ *
++ */
++#define IOCTL_ISS_WRITE_ADV_IPIPE_CFG      (ISS_ADV_IOCTL_BASE + 0x0013u)
++
++    /* @} */
++
++/** \brief Floor a integer value. */
++#define VpsUtils_floor(val, align)  (((val) / (align)) * (align))
++
++/** \brief Align a integer value. */
++#define VpsUtils_align(val, align)  VpsUtils_floor(((val) + (align)-1), (align))
++
++/** \brief 8-bit Tiler container pitch in bytes. */
++#define ISSUTILS_TILER_CNT_8BIT_PITCH   (16u * 1024u)
++
++/** \brief 16-bit Tiler container pitch in bytes. */
++#define ISSUTILS_TILER_CNT_16BIT_PITCH  (32u * 1024u)
++
++/** \brief 32-bit Tiler container pitch in bytes. */
++#define ISSUTILS_TILER_CNT_32BIT_PITCH  (32u * 1024u)
++
++
++#define REG_TILER_DMM_OR1   		  (0x4E000224)
++#define TILER_X_FLIP_VAL   			  (0x01)
++#define TILER_Y_FLIP_VAL   			  (0x02)
++#define TILER_XY_SWAP_VAL 			  (0x04)
++
++
++
++/**
++ *  enum Iss_VpdmaMemoryType
++ *  \brief Enum for buffer memory type.
++ */
++    enum Iss_MemoryType{
++        ISS_NONTILEDMEM = 0,
++    /**< 1D non-tiled memory. */
++        ISS_TILEDMEM,
++    /**< 2D tiled memory. */
++        ISS_MAX
++    /**< Should be the last value of this enumeration.
++         Will be used by driver for validating the input parameters. */
++    };
++
++/**
++ *  enum Iss_MemRotationType
++ *  \brief This enum is used to define the memory data rotation and mirroring
++ *  type. The rotation and mirroring is only valid if the memory type is tiler
++ *  container mode. For non-tiler and tiler page mode, rotation and mirroring
++ *  is not valid
++ */
++    enum Iss_MemRotationType{
++        ISS_MEM_0_ROTATION = 0,
++    /**< no rotation and mirroring. */
++        ISS_MEM_180_ROTATION_MIRRORING,
++    /**< 180 degree rotation with mirroring. */
++        ISS_MEM_0_ROTATION_MIRRORING,
++    /**< 0 degree rotation with mirroring. */
++        ISS_MEM_180_ROTATION,
++    /**< 180 degree rotation. */
++        ISS_MEM_270_ROTATION_MIRRORING,
++    /**< 270 degree rotation with mirroring. */
++        ISS_MEM_270_ROTATION,
++    /**< 270 degree rotation. */
++        ISS_MEM_90_ROTATION,
++    /**< 90 degree rotation. */
++        ISS_MEM_90_ROTATION_MIRRORING,
++    /**< 90 degree rotation with mirroring. */
++        ISS_MEM_ROTATION_MAX
++    /**< Should be the last value of this enumeration.
++         Will be used by driver for validating the input parameters. */
++    };
++
++    /* ==========================================================================
++     */
++    /* Structure Declarations */
++    /* ==========================================================================
++     */
++
++/**
++ * struct Iss_FrameParams
++ * \brief Structure for setting the frame parameters like frame height, width,
++ * pitch and memory type.
++ */
++    struct Iss_FrameParams{
++        u32 width;
++    /**< Width of frame in pixels. */
++        u32 height;
++    /**< Height of frame in lines. */
++        u32 pitch[FVID2_MAX_PLANES];
++    /**< Pitch for each planes in bytes. Only required planes needs to be
++         populated. */
++        u32 memType;
++    /**< VPDMA memory type - Tiled buffer or normal non-tiled buffer.
++         For valid values see #Iss_VpdmaMemoryType. */
++    };
++
++/**
++ *  struct Iss_CropConfig
++ *  \brief Structure containing crop configuration - used in Scalar and VCOMP.
++ */
++    struct Iss_CropConfig{
++        u32 cropStartX;
++    /**< Horizontal offset from which picture needs to be cropped. */
++        u32 cropStartY;
++    /**< Vertical offset from which picture needs to be cropped. */
++        u32 cropWidth;
++    /**< Width of the picture to be cropped. */
++        u32 cropHeight;
++    /**< Height of the picture to be cropped. */
++    };
++
++/**
++ *  struct Iss_PosConfig
++ *  \brief Structure containing position configuration - used in VCOMP and CIG.
++ */
++    struct Iss_PosConfig{
++        u32 startX;
++    /**< Horizontal offset from which picture needs to be positioned. */
++        u32 startY;
++    /**< Vertical offset from which picture needs to be positioned. */
++    };
++
++/**
++ *  struct Iss_SubFrameParams
++ *  \brief Configuration for sub-frame level processing  at create time.
++ */
++    struct Iss_SubFrameParams{
++        u32 subFrameModeEnable;
++    /**< TRUE : SubFrame level processing is done for this channel
++         FALSE: Frame level processing is done for this channel. */
++        u32 numLinesPerSubFrame;
++    /**< Number of lines in a subframe. */
++    };
++
++    /* ==========================================================================
++     */
++    /* Include HW specific config constants, structures */
++    /* ==========================================================================
++     */
++
++//#include <ti/psp/iss/iss_cfgSc.h>
++
++    /* ==========================================================================
++     */
++    /* Function Declarations */
++    /* ==========================================================================
++     */
++
++/**
++ *  \brief Prints to Shared memory and CCS console
++ *
++ *  This function prints the provided formatted string to shared memory and CCS
++ *  console
++ *
++ *  \param format       [IN] Formatted string followed by variable arguments
++ *
++ *  \return FVID2_SOK on success, else appropriate FVID2 error code on failure.
++ */
++    //Int32 Iss_printf(char *format, ...);
++
++/**
++ *  \brief Prints to Shared memory only
++ *
++ *  This function prints the provided formatted string to shared memory only
++ *
++ *  \param format       [IN] Formatted string followed by variable arguments
++ *
++ *  \return FVID2_SOK on success, else appropriate FVID2 error code on failure.
++ */
++    //Int32 Iss_rprintf(char *format, ...);
++
++#ifdef __cplusplus
++}
++#endif
++#endif                                                     /* #ifndef _ISS_H */
++/* @} *//**
++\mainpage  ISS Drivers
++
++\par IMPORTANT NOTE
++     <b>
++     The interfaces defined in this package are bound to change.
++     Kindly treat the interfaces as work in progress.
++     Release notes/user guide list the additional limitation/restriction
++     of this module/interfaces.
++     </b> See also \ref TI_DISCLAIMER.
++
++ISS Drivers allow users to make use of all ISS hardware features like
++1080P capture.
++This document has detailed API description that user's can use to make use
++of the ISS drivers.
++
++<b>
++  Also refer to ISS driver user guide for detailed features,
++  limitations and usage description.
++</b>
++
++The ISS driver API can be broadly divided into the following categories
++  - <b> FVID2 API </b> (See \ref ISS_DRV_FVID2_API) <br>
++    API used to create, control and use the different ISS drivers
++
++  - <b> Capture API </b> (See \ref ISS_DRV_FVID2_CAPTURE_API) <br>
++    API for video capture drivers
++
++  - <b> Links and chains example API </b> (See \ref ISSEXAMPLE_LINKS_AND_CHAIN_API ) <br>
++    APIs used by chains application for connecting drivers to each other in other create
++    different application scenarios like multi-chanmel capture + display,
++    single channel capture + display and so on
++*//**
++ \page  TI_DISCLAIMER  TI Disclaimer
++
++ \htmlinclude ti_disclaim.htm
++*//**
++  \defgroup ISS_DRV_FVID2_IOCTL           ISS - All IOCTL's
++*//**
++  \ingroup ISS_DRV_FVID2_IOCTL
++  \defgroup ISS_DRV_FVID2_IOCTL_FVID2     FVID2 - Common IOCTL's
++*//**
++  \ingroup ISS_DRV_FVID2_IOCTL
++  \defgroup ISS_DRV_FVID2_IOCTL_COMMON    ISS - Common IOCTL's
++*//**
++  \ingroup ISS_DRV_FVID2_IOCTL
++  \defgroup ISS_DRV_FVID2_IOCTL_ADVANCED  ISS - Advanced IOCTL's
++
++*//**
++  \ingroup ISS_DRV_FVID2_IOCTL
++  \defgroup ISS_DRV_FVID2_IOCTL_CAPTURE VP Capture IOCTL's
++
++  In addition to the IOCTLs listed below the following common IOCTLs
++  are applicable to this driver
++
++  - \ref FVID2_START
++  - \ref FVID2_STOP
++*/
+Index: kernel/linux-2.6.37-psp04.04.00.01/include/linux/iss_capture.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ kernel/linux-2.6.37-psp04.04.00.01/include/linux/iss_capture.h	2014-10-24 15:14:21.511411345 -0600
+@@ -0,0 +1,1543 @@
++/** ==================================================================
++ *  @file   iss_capture.h
++ *
++ *  @path   /ti/psp/iss/
++ *
++ *  @desc   This  File contains.
++ * ===================================================================
++ *  Copyright (c) Texas Instruments Inc 2011, 2012
++ *
++ *  Use of this software is controlled by the terms and conditions found
++ *  in the license agreement under which this software has been supplied
++ * ===================================================================*/
++
++/**
++ * \defgroup ISS_DRV_FVID2_CAPTURE_API Capture API
++ *
++ *  This modules define APIs to capture video data using VIP ports in ISS.
++ *  This module can be used for single channel capture as well as multi-channel capture.
++ *
++ *  Capture driver supports the following FVID2 APIs (see also \ref ISS_DRV_FVID2_API)
++ *
++ - <b> Creating the driver </b> - FVID2_create()
++     <table border="1">
++      <tr>
++        <th>Parameter</th>
++        <th>Value</th>
++      </tr>
++      <tr>
++        <td>drvId</td>
++        <td>\ref FVID2_ISS_CAPT_VIP_DRV</td>
++      </tr>
++      <tr>
++        <td>instanceId</td>
++        <td>
++            \ref ISS_CAPT_INST_VIP0_PORTA <br>
++            \ref ISS_CAPT_INST_VIP0_PORTB <br>
++            \ref ISS_CAPT_INST_VIP1_PORTA <br>
++            \ref ISS_CAPT_INST_VIP1_PORTB <br>
++            \ref ISS_CAPT_INST_VIP_ALL  <br>
++        </td>
++      </tr>
++      <tr>
++        <td>createArgs</td>
++        <td>
++        Iss_CaptCreateParams *
++        </td>
++      </tr>
++      <tr>
++        <td>createStatusArgs</td>
++        <td>
++        Iss_CaptCreateStatus *
++        </td>
++      </tr>
++      <tr>
++        <td>cbParams</td>
++        <td>
++        FVID2_CbParams *
++
++        When FVID2_CbParams.cbFxn is set, FVID2_CbParams.cbFxn
++        gets called based on value of Iss_CaptCreateParams.periodicCallbackEnable
++
++        </td>
++      </tr>
++    </table>
++    \ref FVID2_Handle returned by FVID2_create() is used in subsequent FVID2 APIs
++
++  - <b> Deleting the driver </b> - FVID2_delete()
++    <table border="1">
++      <tr>
++        <th>Parameter</th>
++        <th>Value</th>
++      </tr>
++      <tr>
++        <td>deleteArgs</td>
++        <td>NOT USED, set to NULL</td>
++      </tr>
++    </table>
++
++ - <b> Starting the driver </b> - FVID2_start()
++    <table border="1">
++      <tr>
++        <th>Parameter</th>
++        <th>Value</th>
++      </tr>
++      <tr>
++        <td>cmdArgs</td>
++        <td>NOT USED, set to NULL</td>
++      </tr>
++    </table>
++
++ - <b> Stopping the driver </b> - FVID2_stop()
++    <table border="1">
++      <tr>
++        <th>Parameter</th>
++        <th>Value</th>
++      </tr>
++      <tr>
++        <td>cmdArgs</td>
++        <td>NOT USED, set to NULL</td>
++      </tr>
++    </table>
++
++ - <b> Controlling the driver </b> - FVID2_control() <br>
++ See \ref ISS_DRV_FVID2_IOCTL_CAPTURE for the list of IOCTLs supported by the driver
++
++ - <b> Getting captured frames from the driver </b> - FVID2_dequeue()
++    <table border="1">
++      <tr>
++        <th>Parameter</th>
++        <th>Value</th>
++      </tr>
++      <tr>
++        <td>frameList</td>
++        <td>
++        [OUT] FVID2_FrameList.numFrames returns the number of captured frames returned in this FVID2_dequeue() invocation. <br>
++        [OUT] FVID2_FrameList.frames[0..FVID2_FrameList.numFrames-1] are the captured FVID2_Frame pointers to the captured frames. <br>
++        [OUT] For each FVID2_Frame, FVID2_Frame.perFrameCfg points to Iss_CaptRtParams that was set during FVID2_queue()  <br>
++        </td>
++      </tr>
++      <tr>
++        <td>streamId</td>
++        <td>
++        Value can be from 0 .. Iss_CaptCreateParams.numStream-1
++        </td>
++      </tr>
++      <tr>
++        <td>timeout</td>
++        <td>
++        Must be BIOS_NO_WAIT
++        </td>
++      </tr>
++    </table>
++
++ - <b> Releasing used frames back to the driver </b> - FVID2_queue() <br>
++ Also used to queue initial frame buffers to the driver, before calling FVID2_start().
++   <table border="1">
++      <tr>
++        <th>Parameter</th>
++        <th>Value</th>
++      </tr>
++      <tr>
++        <td>frameList</td>
++        <td>
++        [IN] FVID2_FrameList.numFrames sets the number of captured frames given back to driver in this FVID2_queue() invocation. <br>
++        [IN] FVID2_FrameList.frames[0..FVID2_FrameList.numFrames-1] are the captured FVID2_Frame pointers that are being returned. <br>
++        [IN] For each FVID2_Frame, FVID2_Frame.perFrameCfg points to Iss_CaptRtParams.
++              This structure is filled and returned when FVID2_dequeue() is called  <br>
++        </td>
++      </tr>
++      <tr>
++        <td>streamId</td>
++        <td>
++        Value can be from 0 .. Iss_CaptCreateParams.numStream-1 OR \ref ISS_CAPT_STREAM_ID_ANY
++        </td>
++      </tr>
++    </table>
++
++ * @{
++*/
++
++/**
++ *  \file iss_capture.h
++ *
++ *  \brief Capture API
++*/
++
++#ifndef _ISS_CAPTURE_H
++#ifdef __cplusplus
++extern "C" {
++#endif /* __cplusplus */
++#define _ISS_CAPTURE_H
++
++/* ==========================================================================
++ */
++/* Include Files */
++/* ==========================================================================
++ */
++
++#include <linux/iss.h>
++#include <linux/fvid2.h>
++#include <linux/iss_cfgSc.h>
++
++//#include <ti/psp/iss/hal/iss/isp/common/inc/isp_common.h>
++//#include <ti/psp/iss/hal/iss/isp/rsz/inc/rsz.h>
++
++//#include <ti/psp/iss/core/msp_types.h>
++//#include <ti/psp/iss/core/isp_msp.h>
++
++/* ==========================================================================
++ */
++/* Macros & Typedefs */
++/* ==========================================================================
++ */
++
++/**
++    \name Capture Instance ID's
++
++    @{
++*/
++
++/** \brief Capture instance - VP  */
++#define ISS_CAPT_INST_VP (0u)
++
++/** \brief Capture instance - CSI  */
++#define ISS_CAPT_INST_CSI (0u)
++
++/** \brief Capture instance - ALL  */
++#define ISS_CAPT_INST_ALL    (0xFFu)
++
++/** \brief ISP Capture instance - ALL  */
++#define ISS_ISP_INST_ALL      (0xFFu)
++
++/* @} */
++
++/**
++    \name Capture Max Limits
++
++    @{
++*/
++
++/** \brief Capture instance - MAX instances  */
++#define ISS_CAPT_INST_MAX        (1u)
++
++/** \brief ISP Capture instance - MAX instances  */
++#define ISS_ISP_INST_MAX   	     (1u)
++
++/** \brief Maximun channels that can be captured per port */
++#define ISS_CAPT_CH_PER_PORT_MAX       (1u)
++
++/** \brief Maximun channels that can be captured in the system */
++#define ISS_CAPT_CH_MAX       (ISS_CAPT_CH_PER_PORT_MAX*ISS_CAPT_INST_MAX)
++
++/** \brief Maximum frames that can be queued per channel */
++#define ISS_CAPT_FRAME_QUE_LEN_PER_CH_MAX  (32u)
++
++/** \brief Maximum stream's that can be captured per Capture channel
++
++  Stream's corresponds to different types of output that are possible
++  for a given capture input source.
++
++  The stream output type is setup by user during FVID2_create()
++
++  Example streams are,
++
++  For a 1080P input source,
++  Stream 0: YUV420 non-scaled output
++  Stream 1: YUV422 scaled output
++  Stream 3: RAW VBI output
++
++  Refer to user guide for more details about what valid stream
++  combinations are possible.
++*/
++#define ISS_CAPT_STREAM_ID_MAX 	(2u)
++/** \brief Maximum stream's that can be captured per ISP channel
++
++  Stream's corresponds to different types of output that are possible
++  for a given capture input source.
++
++  The stream output type is setup by user during FVID2_create()
++
++  Example streams are,
++
++  For a 1080P input source,
++  Stream 0: YUV420 non-scaled output
++  Stream 1: YUV422 scaled output
++  Stream 3: RAW VBI output
++
++  Refer to user guide for more details about what valid stream
++  combinations are possible.
++*/
++#define ISS_ISP_STREAM_ID_MAX 	(2u)
++
++/* @} */
++
++/** \brief Value to use for 'streamId' when required to do FVID2_queue
++ to any stream
++
++ Note, this value cannot be used as 'streamId' with FVID2_dequeue
++*/
++#define ISS_CAPT_STREAM_ID_ANY (0xFFFFu)
++
++/**
++ *  \brief Scalar ID to be used in the set scalar coefficient and set/get
++ *  advance scalar params IOCTLS.
++ *  Since this driver supports only one scalar per driver instance, the scalar
++ *  could be identified by the instance handle. The below macro is used for
++ *  initializing the scalar ID to a default value.
++ */
++#define ISS_CAPT_SCALAR_ID_DEFAULT      (0u)
++
++/* Capture IOCTL's */
++
++/**
++  \addtogroup ISS_DRV_FVID2_IOCTL_CAPTURE
++  @{
++*/
++
++/**
++  * \brief Set scaler frame info
++  *
++  * This IOCTL is valid only when Scaler is enabled during create time
++  * This IOCTL can be used for features like Down scaling, Pan, Crop
++  *
++  * Note, upscaling is not supported for capture path
++  *
++  * \param cmdArgs       [IN]  Iss_CaptScParams *
++  * \param cmdArgsStatus [OUT] NULL
++  *
++  * \return FVID_SOK on success, else failure
++  *
++*/
++#define IOCTL_ISS_CAPT_SET_SC_PARAMS       (ISS_CAPT_IOCTL_BASE + 0x0000u)
++
++/**
++  * \brief Set frame skip info
++  *
++  * This IOCTL can be used to control capture frame drop sequence,
++  * Example, this IOCTL can be used to convert 60fps input source to 30fps
++  * by dropping frames.
++  *
++  * This control can be done independently for each stream, channel.
++  *
++  * \param cmdArgs       [IN]  Iss_CaptFrameSkip *
++  * \param cmdArgsStatus [OUT] NULL
++  *
++  * \return FVID_SOK on success, else failure
++  *
++*/
++#define IOCTL_ISS_CAPT_SET_FRAME_SKIP      (ISS_CAPT_IOCTL_BASE + 0x0001u)
++
++/**
++  * \brief Get 2A Alg Update
++  *
++  * This IOCTL can be used to get status about a specific channel, stream
++  *
++  * This control can be done independently for each stream, channel.
++  *
++  * \return FVID_SOK on success, else failure
++  *
++*/
++#define IOCTL_ISS_ALG_2A_UPDATE       (ISS_CAPT_IOCTL_BASE + 0x0002u)
++
++/**
++ * \brief Reset VP
++ *
++ * IMPORTANT: Only applicable to \ref ISS_CAPT_INST_VIP_ALL handle
++ *
++ * This IOCTL executes the VP reset sequence for VP.
++ *
++ * This will reset both Port A as well as Port B for that VP instance.
++ *
++ * Make sure no module is being accessed in that VP instance,
++ * either in M2M path or capture path when this API is called.
++ *
++ * \param cmdArgs       [IN]  NULL
++ * \param cmdArgsStatus [OUT] NULL
++ *
++ * \return FVID2_SOK
++*/
++#define IOCTL_ISS_CAPT_RESET_VP          (ISS_CAPT_IOCTL_BASE + 0x0003u)
++
++/**
++ * \brief Reset CSI
++ *
++ * Same as \ref IOCTL_ISS_CAPT_RESET_CSI except that it operates on CSI
++ *
++ * \param cmdArgs       [IN]  NULL
++ * \param cmdArgsStatus [OUT] NULL
++ *
++ * \return FVID2_SOK
++*/
++#define IOCTL_ISS_CAPT_RESET_CSI          (ISS_CAPT_IOCTL_BASE + 0x0004u)
++
++/**
++ * \brief Print detailed capture information
++ *
++ * IMPORTANT: Only applicable to \ref ISS_CAPT_INST_VIP_ALL handle
++ *
++ * This is meant to be used by driver developer for internal debugging purposes
++ * It should not be used by user.
++ *
++ * \param cmdArgs    [IN] u32 Execution time in msecs
++ *
++ * \return FVID2_SOK
++*/
++#define IOCTL_ISS_CAPT_PRINT_ADV_STATISTICS (ISS_CAPT_IOCTL_BASE + 0x0005u)
++
++/**
++ *  \brief Check Capture overflow status and return the status
++ *
++ *  \param cmdArgs       [IN]  NULL
++ *  \param cmdArgsStatus [OUT] Iss_CaptOverFlowStatus *
++ *
++ *  \return FVID2_SOK
++ */
++#define IOCTL_ISS_CAPT_CHECK_OVERFLOW       (ISS_CAPT_IOCTL_BASE + 0x0006u)
++
++/**
++ *  \brief If the overflow flag is set, resets Capt
++ *
++ *  This API does the following
++ *  If VP output FIFO is overflowed
++ *    - then its stops the driver on PortA, PortB
++ *    - reset the VP instance
++ *    - starts driver of PortA, PortB
++ *
++ *  \param cmdArgs       [IN]  const Iss_CaptOverFlowStatus *
++ *  \param cmdArgsStatus [OUT] NULL
++ *
++ *  \return FVID2_SOK
++ */
++#define IOCTL_ISS_CAPT_RESET_AND_RESTART    (ISS_CAPT_IOCTL_BASE + 0x0007u)
++
++/**
++ *  \brief Flush capture driver and dequeue all frames including those that are not captured
++ *
++ *  This API can be called only when driver is in stopped state.
++ *  Driver is in stopped state when,
++ *  - FIVD2_stop() is called
++ *  - FVID2_create() is called and FVID2_start() is not called.
++ *
++ *  This will return frames from all streams for a given capture handle.
++ *  If this IOCTL is called with global handle then this will return
++ *  frames from all capture handles.
++ *
++ *  Since maximum FVID2_MAX_FVID_FRAME_PTR frames can be returned at a time.
++ *  This function should be called in a loop until FVID2_FrameList.numFrames = 0
++ *  is returned in order to get back all the frames from the capture driver.
++ *
++ *  In case capture is in running state this function will return error.
++ *
++ *  This IOCTL will return capture frames, non-captured frames, as well as all frames
++ *  held inside the hardware.
++ *
++ *  \param cmdArgs       [IN]  NULL
++ *  \param cmdArgsStatus [OUT] FVID2_FrameList
++ *
++ *  \return FVID2_SOK
++ */
++#define IOCTL_ISS_CAPT_FLUSH                 (ISS_CAPT_IOCTL_BASE + 0x0008u)
++
++/**
++ * \brief User provided buffer to be used by driver when dropping data
++ *
++ * WARNING: Experimental IOCTL for test. Users should NOT call this IOCTL.
++ *
++ *  \param cmdArgs       [IN]  Void * pointer to data buffer
++ *
++ *  \return FVID2_SOK
++*/
++#define IOCTL_ISS_CAPT_DROP_DATA_BUFFER      (ISS_CAPT_IOCTL_BASE + 0x0009u)
++
++/**
++  * \brief Set Resolution info
++  *
++  * This IOCTL can be used to control capture resolution,
++  * Example, this IOCTL can be used to change resolutions.
++  *
++  * This control can be done independently for each stream, channel.
++  *
++  * \param cmdArgs       [IN]  Iss_CaptResolution *
++  * \param cmdArgsStatus [OUT] NULL
++  *
++  * \return FVID_SOK on success, else failure
++  *
++*/
++#define IOCTL_ISS_CAPT_SET_RESOLUTION        (ISS_CAPT_IOCTL_BASE + 0x000Au)
++
++/**
++  * \brief Set FrameRate info
++  *
++  * This IOCTL can be used to control capture FrameRate,
++  * Example, this IOCTL can be used to change FrameRate.
++  *
++  * This control can be done independently for each stream, channel.
++  *
++  * \param cmdArgs       [IN]  Iss_CaptFrameRate *
++  * \param cmdArgsStatus [OUT] NULL
++  *
++  * \return FVID_SOK on success, else failure
++  *
++*/
++#define IOCTL_ISS_CAPT_SET_FRAMERATE        (ISS_CAPT_IOCTL_BASE + 0x000Bu)
++
++/**
++  * \brief Capture Itt Data
++  *
++  * This IOCTL can be used to control capture of RAW and YUV Frames,
++  * Example, this IOCTL can be used to Capture Raw Data.
++  *
++  * This control can be done independently for each stream, channel.
++  *
++  * \param cmdArgs       [IN]  Iss_IttParams *
++  * \param cmdArgsStatus [OUT] NULL
++  *
++  * \return FVID_SOK on success, else failure
++  *
++*/
++#define IOCTL_ISS_ALG_ITT_CONTROL 			(ISS_CAPT_IOCTL_BASE + 0x000Cu)
++
++/**
++  * \brief Capture Mirror Mode
++  *
++  * This IOCTL can be used to set the modes.
++  * Example, this IOCTL can be used to rotate 180 degrees.
++  *
++  * This control can be done independently for each stream, channel.
++  *
++  * \param cmdArgs       [IN]  int mirrorMode
++  * \param cmdArgsStatus [OUT] NULL
++  *
++  * \return FVID_SOK on success, else failure
++  *
++*/
++#define IOCTL_ISS_CAPT_SET_MIRROR_MODE 		(ISS_CAPT_IOCTL_BASE + 0x000Du)
++
++/**
++  * \brief Capture Set Color
++  *
++  * This IOCTL can be used to control Brightness, Contrast and Saturation,
++  * Example, this IOCTL can be used to control Brightness.
++  *
++  * This control can be done independently for each stream, channel.
++  *
++  * \param cmdArgs       [IN]  Iss_CaptColor *
++  * \param cmdArgsStatus [OUT] NULL
++  *
++  * \return FVID_SOK on success, else failure
++  *
++*/
++#define IOCTL_ISS_CAPT_SET_COLOR 			(ISS_CAPT_IOCTL_BASE + 0x000Eu)
++
++/**
++  * \brief Capture AEWB Vendor
++  *
++  * This IOCTL can be used to set the AEWB Vendor,
++  * Example, this IOCTL can be used to set the AEWB Vendor.
++  *
++  * This control can be done independently for each stream, channel.
++  *
++  * \param cmdArgs       [IN]  AEWB_VENDOR *
++  * \param cmdArgsStatus [OUT] NULL
++  *
++  * \return FVID_SOK on success, else failure
++  *
++*/
++#define IOCTL_ISS_CAPT_SET_AEWBVENDOR		(ISS_CAPT_IOCTL_BASE + 0x000Fu)
++
++/**
++  * \brief Capture AEWB Mode
++  *
++  * This IOCTL can be used to set the AEWB Mode
++  * Example, this IOCTL can be used to set the AEWB Mode.
++  *
++  * This control can be done independently for each stream, channel.
++  *
++  * \param cmdArgs       [IN]  Ptr
++  * \param cmdArgsStatus [OUT] NULL
++  *
++  * \return FVID_SOK on success, else failure
++  *
++*/
++#define IOCTL_ISS_CAPT_SET_AEWBMODE			(ISS_CAPT_IOCTL_BASE + 0x0010u)
++
++/**
++  * \brief Capture Set IRIS Data
++  *
++  * This IOCTL can be used to control Auto IRIS Data,
++  * Example, this IOCTL can be used to control Auto IRIS Data.
++  *
++  * This control can be done independently for each stream, channel.
++  *
++  * \param cmdArgs       [IN]  Ptr *
++  * \param cmdArgsStatus [OUT] NULL
++  *
++  * \return FVID_SOK on success, else failure
++  *
++*/
++#define IOCTL_ISS_CAPT_SET_IRIS				(ISS_CAPT_IOCTL_BASE + 0x0011u)
++
++/**
++  * \brief Capture AEWB  Priority
++  *
++  * This IOCTL can be used to Set AEWB Priority,
++  * Example, this IOCTL can be used to Set AEWB Priority.
++  *
++  * This control can be done independently for each stream, channel.
++  *
++  * \param cmdArgs       [IN]  Ptr *
++  * \param cmdArgsStatus [OUT] NULL
++  *
++  * \return FVID_SOK on success, else failure
++  *
++*/
++#define IOCTL_ISS_CAPT_SET_AEWBPRI	        (ISS_CAPT_IOCTL_BASE + 0x0012u)
++
++/**
++  * \brief Capture Sharpness
++  *
++  * This IOCTL can be used to Set Sharpness,
++  * Example, this IOCTL can be used to Set Sharpness.
++  *
++  * This control can be done independently for each stream, channel.
++  *
++  * \param cmdArgs       [IN]  Iss_IttParams *
++  * \param cmdArgsStatus [OUT] NULL
++  *
++  * \return FVID_SOK on success, else failure
++  *
++*/
++#define IOCTL_ISS_CAPT_SET_SHARPNESS		(ISS_CAPT_IOCTL_BASE + 0x0013u)
++
++/**
++  * \brief Capture BLC
++  *
++  * This IOCTL can be used to set BLC,
++  * Example, this IOCTL can be used to set BLC.
++  *
++  * This control can be done independently for each stream, channel.
++  *
++  * \param cmdArgs       [IN]  Ptr *
++  * \param cmdArgsStatus [OUT] NULL
++  *
++  * \return FVID_SOK on success, else failure
++  *
++*/
++#define IOCTL_ISS_CAPT_SET_BLC		        (ISS_CAPT_IOCTL_BASE + 0x0014u)
++
++/**
++  * \brief Capture AWB Mode
++  *
++  * This IOCTL can be used to control AWB Mode,
++  * Example, this IOCTL can be used to control AWB Mode.
++  *
++  * This control can be done independently for each stream, channel.
++  *
++  * \param cmdArgs       [IN]  Ptr *
++  * \param cmdArgsStatus [OUT] NULL
++  *
++  * \return FVID_SOK on success, else failure
++  *
++*/
++#define IOCTL_ISS_CAPT_SET_AWBMODE		    (ISS_CAPT_IOCTL_BASE + 0x0015u)
++
++/**
++  * \brief Capture Itt Data
++  *
++  * This IOCTL can be used to control AE Mode,
++  * Example, this IOCTL can be used to control AE Mode.
++  *
++  * This control can be done independently for each stream, channel.
++  *
++  * \param cmdArgs       [IN]  Ptr *
++  * \param cmdArgsStatus [OUT] NULL
++  *
++  * \return FVID_SOK on success, else failure
++  *
++*/
++#define IOCTL_ISS_CAPT_SET_AEMODE		    (ISS_CAPT_IOCTL_BASE + 0x0016u)
++
++/**
++  * \brief Capture Env
++  *
++  * This IOCTL can be used to set Env,
++  * Example, this IOCTL can be used to set Env.
++  *
++  * This control can be done independently for each stream, channel.
++  *
++  * \param cmdArgs       [IN]  Ptr *
++  * \param cmdArgsStatus [OUT] NULL
++  *
++  * \return FVID_SOK on success, else failure
++  *
++*/
++#define IOCTL_ISS_CAPT_SET_ENV              (ISS_CAPT_IOCTL_BASE + 0x0017u)
++
++/**
++  * \brief Capture BINNING
++  *
++  * This IOCTL can be used to set Binning Value,
++  * Example, this IOCTL can be used to set Binning Value.
++  *
++  * This control can be done independently for each stream, channel.
++  *
++  * \param cmdArgs       [IN]  Ptr *
++  * \param cmdArgsStatus [OUT] NULL
++  *
++  * \return FVID_SOK on success, else failure
++  *
++*/
++#define IOCTL_ISS_CAPT_SET_BINNING          (ISS_CAPT_IOCTL_BASE + 0x0018u)
++
++/**
++  * \brief Capture DCC Params
++  *
++  * This IOCTL can be used to Set DCC params,
++  * Example, this IOCTL can be used to set DCC params.
++  *
++  * This control can be done independently for each stream, channel.
++  *
++  * \param cmdArgs       [IN]  Ptr *
++  * \param cmdArgsStatus [OUT] NULL
++  *
++  * \return FVID_SOK on success, else failure
++  *
++*/
++#define IOCTL_ISS_CAPT_SET_DCCPRM          	(ISS_CAPT_IOCTL_BASE + 0x0019u)
++
++/**
++  * \brief Capture Histogram Address
++  *
++  * This IOCTL can be used to Set Histogram Address,
++  * Example, this IOCTL can be used to Set Histogram Address.
++  *
++  * \return FVID_SOK on success, else failure
++  *
++*/
++#define IOCTL_ISS_CAPT_GET_HISTADDR        	(ISS_CAPT_IOCTL_BASE + 0x001Au)
++
++/**
++  * \brief Capture Auto Focus
++  *
++  * This IOCTL can be used to capture Auto Focus Data,
++  * Example, this IOCTL can be used to capture Auto Focus Data.
++  *
++  * \return FVID_SOK on success, else failure
++  *
++*/
++#define IOCTL_ISS_CAPT_GET_AFDATA        	(ISS_CAPT_IOCTL_BASE + 0x001Bu)
++#define IOCTL_ISS_CAPT_GET_AEWBDATA        	(ISS_CAPT_IOCTL_BASE + 0x001Cu)
++#define IOCTL_ISS_CAPT_GET_FOCUSVALUE       (ISS_CAPT_IOCTL_BASE + 0x001Du)
++
++/* Capture ISP IOCTL */
++/**
++  * \brief ISP Resizer Config
++  *
++  * This IOCTL can be used to Configure Resizer for ISP Driver,
++  *
++  * \return FVID_SOK on success, else failure
++  *
++*/
++#define IOCTL_ISS_ISP_RSZ_CONFIG  			(ISS_M2M_IOCTL_BASE + 0x0001u)
++
++/* @} */
++
++/**
++ * \brief Video capture operation mode
++*/
++enum Iss_CaptVideoCaptureMode{
++
++    ISS_CAPT_VIDEO_CAPTURE_MODE_SINGLE_STREAM = 0,
++  /**< Single Stream Video Capture Mode */
++
++    ISS_CAPT_VIDEO_CAPTURE_MODE_DUAL_STREAM,
++  /**< Dual Stream Video Capture Mode */
++
++    ISS_CAPT_VIDEO_CAPTURE_MODE_MAX
++  /**< Maximum modes */
++};
++
++/**
++ * \brief Video interface mode
++*/
++enum Iss_CaptVideoIfMode{
++
++    ISS_CAPT_BAYER_12BIT = 0,
++  /**< Embedded sync mode:  8bit - BT656 standard  */
++
++    ISS_CAPT_YUV_8BIT,
++  /**< Embedded sync mode:  16bit - BT1120 standard  */
++
++    ISS_CAPT_YUV_16BIT,
++  /**< Embedded sync mode:  24bit */
++
++    ISS_CAPT_VIDEO_IF_MODE_MAX
++  /**< Maximum modes */
++};
++
++/**
++ * \brief Video interface mode
++*/
++enum Iss_CaptMode{
++
++    ISS_CAPT_INMODE_ISIF,
++	/**< Capture Continious Mode Capture */
++	ISS_CAPT_INMODE_DDR
++	/**< Capture One Shot Mode Capture*/
++
++};
++
++/* ==========================================================================
++ */
++/* Structure Declarations */
++/* ==========================================================================
++ */
++
++/*
++struct IspFlagsMirrorT{
++    MSP_PROC_ISIF_VALID_ID eFProcIsifValidity;
++    MSP_PROC_IPIPE_VALID_ID eFProcIpipeValidity;
++    MSP_PROC_IPIPEIF_VALID_ID eFProcIpipeifValidity;
++    MSP_PROC_IPIPE_RSZ_VALID_ID eFProcRszValidity;
++    MSP_PROC_H3A_VALID_ID eFH3aValidity;
++};
++
++struct VideoModuleInstanceT{
++    MSP_PTR pH3aAewbBuff;
++    MSP_PTR pH3aAewbBuffNoPad;
++    MSP_PTR pH3aAfBuff;
++    MSP_PTR p2DLscTableBuff;
++    MSP_HANDLE hIspHandle;
++    MSP_HANDLE hInit;
++    MSP_HANDLE hSdmaHandle;
++    MSP_HANDLE hCamHMSP;
++    MSP_HANDLE hCamLensHMSP;
++
++    MSP_IspConfigParamsT tConfigParams;
++    MSP_IpipeBscCfgT tBscCfg;
++    MSP_BOOL bBscFromFD;
++    MSP_IpipeHistCfgT tHistCfg;
++    MSP_U32 nBscRowBuffSize;
++    MSP_U32 nBscColBuffSize;
++    MSP_APPCBPARAM_TYPE tIspAppParam;
++    struct IspFlagsMirrorT tIspMirror;
++    MSP_BOOL bVidStab;
++    MSP_BOOL bAllocateOutBuff;
++    MSP_U32 nAlterSeqNum;
++    MSP_U32 nBscAlterSeqNum;
++    MSP_U32 nARPrvAlterSeqNum;
++    MSP_U32 nARCapAlterSeqNum;
++    MSP_BOOL bFilledBuffsInvalidate;
++    MSP_U32 nCalcStartX;
++    MSP_U32 nCalcStartY;
++    MSP_U32 nOutStartX;
++    MSP_U32 nOutStartY;
++    MSP_U32 nRemainIsrEvents;
++    MSP_PTR pIssSem;
++    MSP_U32 nIssInX;
++    MSP_U32 nIssInY;
++    MSP_U8 nLscEnable;
++    MSP_BOOL nLscTableIsValid;
++    MSP_U8 nProcessAreaAlign;
++    MSP_HANDLE hAibhHeap;
++    MSP_HANDLE hHwHeap;
++    MSP_PTR pBscSem;
++    MSP_IpipeBoxcarCfgT tBoxcar;
++
++    MSP_U32 nFDOffset_SysState;
++    MSP_U32 nFDOffset_SysStateFrm;
++    MSP_U32 nFDOffset_ImgPrv;
++    MSP_U32 nFDOffset_ImgPrvOmx;
++    MSP_U32 nFDOffset_ImgFaceDetect;
++    MSP_U32 nFDOffset_ImgRawOmx;
++    MSP_U32 nFDOffset_H3A_AeAwb;
++    MSP_U32 nFDOffset_H3A_Af;
++    MSP_U32 nFDOffset_Bsc;
++    MSP_U32 nFDOffset_Histogram;
++    MSP_U32 nFDOffset_Boxcar;
++    MSP_U32 nFDOffset_MeasurementData;
++    MSP_U32 nFDOffset_EmbeddedData;
++    MSP_BOOL bUseBTE;
++
++    MSP_PTR p2AObj;
++}; */
++
++/**
++ * \brief Capture window information
++ *
++ * Only valid when Iss_CaptOutInfo.scEnable is or can be TRUE
++ *
++ * Note, upscaling is not supported for capture path
++*/
++struct Iss_CaptScParams{
++    u32 inWidth;
++  /**< Input source width, MUST be >= actual or expected
++   * video source input width
++  */
++
++    u32 inHeight;
++  /**< Input source height, MUST be >= actual or expected
++     video source input width
++
++     Height should be field height in case source is interlaced \n
++     Height should be frame height in case source is progressive \n
++  */
++
++    u32 InStartX;
++  /**< Input Start Index Width , in pixels */
++
++    u32 InStartY;
++  /**< Input Start Index Height , in pixels */
++
++    u32 OutStartX;
++  /**< Output Start Index Width , in pixels */
++
++    u32 OutStartY;
++  /**< Output Start Index Height , in pixels */
++
++    u32 outWidth;
++  /**< Scaler output width, in pixels */
++
++    u32 outHeight;
++  /**< Scaler output height, in lines */
++
++    struct Iss_CropConfig inCropCfg;
++  /**< Scalar input crop config
++  */
++
++    struct Iss_ScConfig *scConfig;
++  /**< Scaler config, set NULL to setup default parameters */
++
++    struct Iss_ScCoeffParams *scCoeffConfig;
++  /**< Scaler co-eff config, set NULL to setup default co-effs */
++
++};
++
++/**
++ * \brief Capture output format information
++*/
++struct Iss_CaptOutInfo{
++
++    u32 dataFormat;
++  /**< Output Data format, valid options are
++      FVID2_DF_YUV422I_YUYV,
++      FVID2_DF_YUV420SP_UV,
++      FVID2_DF_YUV422SP_UV,
++      FVID2_DF_RGB24_888,
++      FVID2_DF_RAW_VBI.
++      For valid values see #u32.
++
++      If FVID2_DF_YUV422SP_UV is used as output format, it must
++      be the first output format (output format at the
++      index 0 in outStreamInfo in #Iss_CaptCreateParams).
++   */
++
++    u32 memType;
++  /**< Tiled or non-tiled memory selection for output.
++       For valid values see #Iss_VpdmaMemoryType.
++
++      For FVID2_DF_YUV422I_YUYV, FVID2_DF_RGB24_888, FVID2_DF_RAW_VBI
++      output, always ISS_VPDMA_MT_NONTILEDMEM will be used internally.
++
++      User can control tiled or non-tiled for FVID2_DF_YUV420SP_UV,
++      FVID2_DF_YUV422SP_UV
++  */
++
++    u32 pitch[FVID2_MAX_PLANES];
++    /**< Pitch in bytes between two lines.
++        Pitch can be specified separately for every plane.
++    */
++
++    u32 maxOutHeight;
++    /**< Set limit on the max possible height of the output frame
++        For valid values see #Iss_CaptMaxOutHeight
++    */
++
++    u32 scEnable;
++  /**< TRUE: Use scaler before writing video data to memory,
++   * FALSE: Scaler is not used in capture path
++   * MUST be FALSE for line-multiplexed, pixel multiplexed modes  */
++
++    u32 subFrameModeEnable;
++  /**< TRUE: subframe based capture is enabled
++      FALSE: subframe based capture is disabled
++
++    Must be FALSE for multi-channel modes
++  */
++
++    u32 numLinesInSubFrame;
++  /**< Number of lines per subframes for this output stream
++
++    MUST be multiple of the stream output size.
++    Not valid, ignored for ancillary data stream
++
++    SubFrame callback gets called after every numLinesInSubFrame
++    for every output stream, except ancillary data stream
++
++    Ignored when subFrameModeEnable = FALSE
++  */
++
++    FVID2_SubFrameCbFxn subFrameCb;
++  /**< SubFrame callback, is called for every subframe of this
++      output stream
++
++      Ignored when subFrameModeEnable = FALSE
++  */
++
++};
++
++/**
++ * \brief Capture driver VS process parameters
++*/
++struct Iss_CaptVsProcessPrm{
++    u32 bscBufferCurrV;
++	/**< Memory Address where the vertical BSC data for the current frame is present */
++
++    u32 bscBufferCurrH;
++	/**< Memory Address where the horizontal BSC data for the current frame is present */
++
++    u32 bscBufferPrevV;
++	/**< Memory Address where the vertical BSC data for the previous frame is present */
++
++    u32 bscBufferPrevH;
++	/**< Memory Address where the horizontal BSC data for the previous frame is present */
++
++	u32 startX;
++	/**< X co-ordinate of stabilized frame */
++
++	u32 startY;
++	/**< Y co-ordinate of stabilized frame */
++
++};
++
++/**
++ * \brief Capture driver create arguments, used when calling FVID2_create()
++*/
++struct Iss_CaptCreateParams{
++    //VideoModuleInstanceT *pCompPrivate;
++
++    u32 videoCaptureMode;
++  /**< Video capture mode. For valid values see #Iss_CaptVideoCaptureMode */
++
++    u32 videoIfMode;
++  /**< Video interface mode. For valid values see #Iss_CaptVideoIfMode */
++
++    u32 inDataFormat;
++  /**< Input source color data format, valid values are given below \n
++      FVID2_DF_YUV422P, ( 'P' is not relavent for input data format) \n
++      FVID2_DF_YUV444P, ( 'P' is not relavent for input data format) \n
++      FVID2_DF_RGB24_888.
++      For valid values see #u32.
++  */
++
++    u32 periodicCallbackEnable;
++  /**< TRUE: User callback passed during FVID2 create is called periodically
++             at a fixed duration of about 8msecs
++      FALSE: User callback passed during FVID2 create is called only
++             if one or more frames are captured in any of the streams,
++             channels belonging to this handle
++  */
++
++    u32 numCh;
++  /**< Number of channel for multi-channel modes,
++
++      Must be 1 for ISS_CAPT_VIDEO_CAPTURE_MODE_SINGLE_CH_NON_MUX_EMBEDDED_SYNC
++  */
++
++    u32 vsEnable;
++    /**< TRUE/FALSE: Enable/disable VSTAB */
++
++    u32 vsDemoEnable;
++    /**< TRUE/FALSE: Enable/disable VSTAB */
++
++	u32 glbcEnable;
++    /**< TRUE/FALSE: Enable/disable GLBC */
++
++    u32 numStream;
++  /**< Number of streams to capture, MUST be <= ISS_CAPT_STREAM_ID_MAX  */
++    u32 pitch[ISS_CAPT_STREAM_ID_MAX];
++
++    struct Iss_CaptOutInfo outStreamInfo[ISS_CAPT_STREAM_ID_MAX];
++  /**< Output format for each stream */
++
++    struct Iss_CaptScParams scParams[ISS_CAPT_STREAM_ID_MAX];
++  /**< Scaler parameters to use when
++        Iss_CaptCreateParams.outStreamInfo[x].scEnable = TRUE
++
++       Parameters are ignored when outStreamInfo[x].scEnable = FALSE
++   */
++
++    u32 channelNumMap[ISS_CAPT_STREAM_ID_MAX][ISS_CAPT_CH_PER_PORT_MAX];
++  /**< Channel Number to assign to each channel and stream of this handle.
++       This is used during FVID2_queue(), FVID2_dequeue().
++       Channel number must be unique across the whole system.
++       Users can use Iss_captMakeChannelNum() to generate a system unique channel number
++  */
++
++    void *SensorHandle;
++
++    u32 aewbVendor;
++  /**< AEWB algorithm vendor ID */
++
++    u32 aewbMode;
++  /**< AEWB mode */
++
++    u32 aewbPriority;
++  /**< AEWB priority */
++
++	u32 captureMode;	//TODO this is Iss_CaptMode enum
++  /**< Capture Mode */
++
++	int (*vsProcessFunc)(struct Iss_CaptVsProcessPrm *pVsProcessPrm);
++  /**< VS process function pointer */
++
++};
++
++/**
++  \brief Capture driver create status. Returned after calling FVID2_create()
++*/
++struct Iss_CaptCreateStatus{
++    int retVal;
++  /**< Create status, FVID2_SOK on success, else failure */
++
++};
++
++/**
++  \brief Capture driver run-time parameters
++
++  - This structure is returned by capture driver when FVID2_dequeue()
++    is called by application
++  - NOTE:this structure is NOT filled by driver when TILED mode is used
++  - This structure is returned as part of FVID2_Frame.perFrameCfg
++  - Application should make sure FVID2_Frame.perFrameCfg is set to a valid
++    Iss_CaptRtParams pointer when queue-ing the frame back to capture driver
++    \code
++    Iss_CaptRtParams rtParams;
++
++    pFrame->perFrameCfg = &rtParams;
++    \endcode
++  - Alternatively, user can pass back the same FVID2_Frame pointer without
++    modifying FVID2_Frame.perFrameCfg
++*/
++struct Iss_CaptRtParams{
++
++    u32 captureOutWidth;
++  /**< Capture data width in pixels */
++
++    u32 captureOutHeight;
++  /**< Capture data height in lines */
++
++    u32 captureOutPitch;
++  /**< Capture data Pitch in lines */
++
++};
++
++/**
++  \brief Capture Channel Get Status IOCTL input arguments
++*/
++struct Iss_CaptChGetStatusArgs{
++
++    u32 channelNum;
++  /**< [IN] Channel number for which status is requested
++  */
++
++    u32 frameInterval;
++  /**< [IN] Expected interval in units of timer ticks between frames.
++
++    Iss_CaptChStatus.isVideoDetected is FALSE if no frame is captured
++    for a duration of 'frameInterval x 2', else
++    Iss_CaptChStatus.isVideoDetected is TRUE
++  */
++
++};
++
++/**
++  \brief Capture Channel Get Status IOCTL result
++*/
++struct Iss_CaptChStatus{
++
++    u32 isVideoDetected;
++  /**< [OUT] TRUE: Video detected at this channel,
++            FALSE: Video not detected at this channel
++    */
++
++    u32 outWidth;
++  /**< [OUT] Capture data output width in pixels */
++
++    u32 outHeight;
++  /**< [OUT] Capture data output height in lines */
++
++    u32 droppedFrameCount;
++  /**< [OUT] Number of frame's dropped by driver due to unavailability
++    of buffer from application  */
++
++    u32 captureFrameCount;
++  /**< [OUT] Number of frame's captured by driver into the buffer
++             provided by application
++    */
++
++};
++
++/**
++  \brief Frame Skip parameters
++*/
++struct Iss_CaptFrameSkip{
++
++    u32 channelNum;
++  /**< Channel number of which frame skip will be applied
++  */
++
++    u32 frameSkipMask[ISS_CAPT_STREAM_ID_MAX];
++    u32 frameSkipMaskHigh[ISS_CAPT_STREAM_ID_MAX];
++  /**< Frame Skip Mask (bit0..bit29) bitN = 1 Skip frame,
++        bitN = 0 DO NOT skip frame
++
++    Example, 0x0 for no frame skip, 0x2AAAAAAA for skipping alternate frames
++  */
++
++};
++
++/**
++  \brief Itt parameters
++*/
++struct Iss_IttParams{
++
++    u32 ittCommand;
++  /**< ITT Command Used
++  */
++
++    u32 *isif_dump;
++  /**< Raw Memory Buffer address
++  */
++
++    u32 Raw_Data_Ready;
++	/**  TRUE/FALSE: RAW output ready
++     */
++};
++
++/**
++  \brief Resolution parameters
++*/
++struct Iss_CaptResolution{
++
++    u32 channelNum;
++  /**< Channel number of which frame skip will be applied
++  */
++
++    u32 ResolutionWidth;
++  /**< Resolution Width
++  */
++
++    u32 ResolutionHeight;
++  /**< Resolution Height
++  */
++
++};
++
++/**
++  \brief Resolution parameters
++*/
++struct Iss_CaptFrameRate{
++
++    u32 channelNum;
++  /**< Channel number of which frame skip will be applied
++  */
++
++    u32 FrameRate;
++  /**< Resolution Width
++  */
++
++};
++
++/**
++  \brief VIP overflow status structure.
++*/
++struct Iss_CaptOverFlowStatus{
++    u32 isPortOverFlowed[ISS_CAPT_INST_MAX];
++    /**< Flag to indicate whether a port overflowed or not. */
++};
++
++/**
++  \brief Color parameters
++*/
++struct Iss_CaptColor{
++
++    u32 saturation;
++  /**< Saturation
++  */
++
++    u32 contrast;
++  /**< Contrast
++  */
++
++    u32 brightness;
++  /**< Brightness
++  */
++
++};
++
++/**
++  \brief DCC parameters
++*/
++struct Iss_CaptDccPrm{
++
++    u8 *dcc_Default_Param;
++  /**< DCC prm buffer address
++  */
++
++    int dcc_init_done;
++  /**< DCC init done flag
++  */
++
++    u32 dccSize;
++  /**< DCC param size
++  */
++
++};
++
++/* ISS Post Pricess structures */
++
++struct Iss_IspCreateStatus{
++    int retVal;
++  /**< Create status, FVID2_SOK on success, else failure */
++
++};
++
++struct Iss_IspCreateParams{
++    u32 clkDivM;
++  /**< Clk DIV M
++  */
++	u32 clkDivN;
++  /**< Clk DIV N
++  */
++    u32 vsEnable;
++  /**< VS Enable
++  */
++
++    u32 vsDemoEnable;
++  /**< VS Enable
++  */
++
++};
++
++struct Iss_IspRszConfig{
++	u32 inDataFmt;
++	u32 outDataFmt0;
++	u32 outDataFmt1;
++	u32 inWidth;
++	u32 inHeight;
++	u32 inPitch;
++	u32 outWidth0;
++	u32 outHeight0;
++	u32 pitch0;
++	u32 outWidth1;
++	u32 outHeight1;
++	u32 pitch1;
++	u32 numStream;
++	u32 runVs;
++    u32 mirrorMode;
++	u32 outStartX;
++	u32 outStartY;
++};
++
++struct Iss_IspPerFrameCfg{
++    u32 queueId;
++	u32 frameWidth;
++	u32 frameHeight;
++	u32 dataFormat;
++
++};
++
++/**
++  \brief Focus Value
++*/
++struct Iss_CaptFocusValue{
++
++    u32 resetFlag;
++  /**< Reset Flag
++  */
++
++    u32 focusValue;
++  /**< Focus Value
++  */
++
++};
++
++/* ========================================================================== */
++/*                          Function Declarations                             */
++/* ========================================================================== */
++/* ==========================================================================
++ */
++/* Function Declarations */
++/* ==========================================================================
++ */
++
++/**
++ * \brief Get capture instance ID from channelNum
++ *
++ * channelNum is value which is a combination of
++ *  - instance ID
++ *  - stream ID for that instance
++ *  - channel ID for that stream, instance
++ *
++ * For details refer to VIP capture section in User Guide
++ *
++ * \param channelNum [IN] channelNum
++ *
++ * \return instance ID ( 0 .. ISS_CAPT_INST_MAX-1 )
++*/
++/* ===================================================================
++ *  @func     Iss_captGetInstId
++ *
++ *  @desc     Function does the following
++ *
++ *  @modif    This function modifies the following structures
++ *
++ *  @inputs   This function takes the following inputs
++ *            <argument name>
++ *            Description of usage
++ *            <argument name>
++ *            Description of usage
++ *
++ *  @outputs  <argument name>
++ *            Description of usage
++ *
++ *  @return   Return value of this function if any
++ *  ==================================================================
++ */
++static inline u32 Iss_captGetInstId(u32 channelNum)
++{
++    return channelNum / (ISS_CAPT_CH_PER_PORT_MAX * ISS_CAPT_STREAM_ID_MAX);
++}
++
++/**
++ * \brief Get capture stream ID from channelNum
++ *
++ * channelNum is value which is a combination of
++ *  - instance ID
++ *  - stream ID for that instance
++ *  - channel ID for that stream, instance
++ *
++ * For details refer to VIP capture section in User Guide
++ *
++ * \param channelNum [IN] channelNum
++ *
++ * \return stream ID ( 0 .. ISS_CAPT_STREAM_ID_MAX-1 )
++*/
++/* ===================================================================
++ *  @func     Iss_captGetStreamId
++ *
++ *  @desc     Function does the following
++ *
++ *  @modif    This function modifies the following structures
++ *
++ *  @inputs   This function takes the following inputs
++ *            <argument name>
++ *            Description of usage
++ *            <argument name>
++ *            Description of usage
++ *
++ *  @outputs  <argument name>
++ *            Description of usage
++ *
++ *  @return   Return value of this function if any
++ *  ==================================================================
++ */
++static inline u32 Iss_captGetStreamId(u32 channelNum)
++{
++    u32 value;
++
++    value = channelNum % (ISS_CAPT_CH_PER_PORT_MAX * ISS_CAPT_STREAM_ID_MAX);
++    value /= ISS_CAPT_CH_PER_PORT_MAX;
++
++    return value;
++}
++
++/**
++ * \brief Get capture channel ID from channelNum
++ *
++ * channelNum is value which is a combination of
++ *  - instance ID
++ *  - stream ID for that instance
++ *  - channel ID for that stream, instance
++ *
++ * For details refer to VIP capture section in User Guide
++ *
++* \param channelNum [IN] channelNum
++ *
++ * \return channel ID ( 0 .. ISS_CAPT_CH_PER_PORT_MAX-1 )
++*/
++/* ===================================================================
++ *  @func     Iss_captGetChId
++ *
++ *  @desc     Function does the following
++ *
++ *  @modif    This function modifies the following structures
++ *
++ *  @inputs   This function takes the following inputs
++ *            <argument name>
++ *            Description of usage
++ *            <argument name>
++ *            Description of usage
++ *
++ *  @outputs  <argument name>
++ *            Description of usage
++ *
++ *  @return   Return value of this function if any
++ *  ==================================================================
++ */
++static inline u32 Iss_captGetChId(u32 channelNum)
++{
++    return channelNum % (ISS_CAPT_CH_PER_PORT_MAX);
++}
++
++/**
++ * \brief Make a system unique channelNum
++ *
++ * channelNum is value which is a combination of
++ *  - instance ID
++ *  - stream ID for that instance
++ *  - channel ID for that stream, instance
++ *
++ * For details refer to VIP capture section in User Guide
++ *
++ * \param instId    [IN] VIP Instance ID
++ * \param streamId  [IN] Stream ID
++ * \param chId      [IN] Channel ID
++ *
++ * \return channelNum
++*/
++/* ===================================================================
++ *  @func     Iss_captMakeChannelNum
++ *
++ *  @desc     Function does the following
++ *
++ *  @modif    This function modifies the following structures
++ *
++ *  @inputs   This function takes the following inputs
++ *            <argument name>
++ *            Description of usage
++ *            <argument name>
++ *            Description of usage
++ *
++ *  @outputs  <argument name>
++ *            Description of usage
++ *
++ *  @return   Return value of this function if any
++ *  ==================================================================
++ */
++static inline u32 Iss_captMakeChannelNum(u32 instId, u32 streamId,
++                                            u32 chId)
++{
++    return instId * ISS_CAPT_CH_PER_PORT_MAX * ISS_CAPT_STREAM_ID_MAX
++        + streamId * ISS_CAPT_CH_PER_PORT_MAX + chId;
++}
++
++#ifdef __cplusplus
++}
++#endif /* __cplusplus */
++#endif                                                     /* #ifndef
++                                                            * _ISS_CAPTURE_H */
++
++/* @} */
+Index: kernel/linux-2.6.37-psp04.04.00.01/include/linux/iss_cfgSc.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ kernel/linux-2.6.37-psp04.04.00.01/include/linux/iss_cfgSc.h	2014-10-24 15:14:21.511411345 -0600
+@@ -0,0 +1,505 @@
++/** ==================================================================
++ *  @file   iss_cfgSc.h
++ *
++ *  @path   /ti/psp/iss/
++ *
++ *  @desc   This  File contains.
++ * ===================================================================
++ *  Copyright (c) Texas Instruments Inc 2011, 2012
++ *
++ *  Use of this software is controlled by the terms and conditions found
++ *  in the license agreement under which this software has been supplied
++ * ===================================================================*/
++
++/**
++ * \ingroup ISS_DRV_FVID2_ISS_COMMON
++ * \addtogroup ISS_DRV_FVID2_ISS_COMMON_SC  ISS - Scaler Config API
++ *
++ * @{
++ */
++
++/**
++ *  \file iss_cfgSc.h
++ *
++ *  \brief ISS - Scalar Config API
++ */
++
++#ifndef _ISS_CFG_SC_H
++#define _ISS_CFG_SC_H
++
++/* ==========================================================================
++ */
++/* Include Files */
++/* ==========================================================================
++ */
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++/* ==========================================================================
++ */
++/* Macros & Typedefs */
++/* ==========================================================================
++ */
++
++/** \brief Number of Scalar horizontal coefficient. */
++#define ISS_SC_HORZ_NUM_COEFF           (224u)
++/** \brief Number of Scalar vertical coefficient. */
++#define ISS_SC_VERT_NUM_COEFF           (160u)
++/** \brief Number of Scalar bilinear coefficient. */
++#define ISS_SC_BILINEAR_NUM_COEFF       (224u)
++/** \brief Number of peaking coefficients */
++#define ISS_SC_PEAKING_MAX_COEFF        (6u)
++/**
++ *  enum Iss_ScCoeffSet
++ *  \brief This defines the standard coefficient sets available for
++ *  different scaling ratios.
++ */
++    enum Iss_ScCoeffSet{
++        ISS_SC_DS_SET_0,
++    /**< Coefficient for the down sampling (8/16) < Factor <= (9/16). */
++        ISS_SC_DS_SET_1,
++    /**< Coefficient for the down sampling (9/16) < Factor <= (10/16). */
++        ISS_SC_DS_SET_2,
++    /**< Coefficient for the down sampling (10/16) < Factor <= (11/16). */
++        ISS_SC_DS_SET_3,
++    /**< Coefficient for the down sampling (11/16) < Factor <= (12/16). */
++        ISS_SC_DS_SET_4,
++    /**< Coefficient for the down sampling (12/16) < Factor <= (13/16). */
++        ISS_SC_DS_SET_5,
++    /**< Coefficient for the down sampling (13/16) < Factor <= (14/16). */
++        ISS_SC_DS_SET_6,
++    /**< Coefficient for the down sampling (14/16) < Factor <= (15/16). */
++        ISS_SC_DS_SET_7,
++    /**< Coefficient for the down sampling (15/16) < Factor. */
++        ISS_SC_US_SET,
++    /**< Coefficient set for the upsampling.  Includes horizontal, vertical
++         and both chroma and luma up sampling. */
++        ISS_SC_SET_MAX
++    /**< Should be the last value of this enumeration.
++         Will be used by driver for validating the input parameters. */
++    };
++
++/**
++ *  enum Iss_ScHorzScalarType
++ *  \brief This defines the type of horizontal scalar.
++ *  Two types of horizontal scalars are there in hardware,
++ *  polyphase scalar and decimation scalar. Use decimation scalar for
++ *  1/2 and 1/4x scaling. Else use polyphase scalar. If auto is selected
++ *  hardware will take care of using appropriate scalar.
++ */
++    enum Iss_ScHorzScalarType{
++        ISS_SC_HST_AUTO = 0,
++    /**< Automatically selects decimation filter and then polyphase filter if
++         required. */
++        ISS_SC_HST_DCM_2X,
++    /**< Selects 2X decimation Filter. Used for downscaling only. Not used when
++         down scaling ratio > 0.5x. */
++        ISS_SC_HST_DCM_4X,
++    /**< Selects 4X decimation Filter. Used for down scaling only. Not used
++         when down scaling ratio > 0.5x. */
++        ISS_SC_HST_POLYPHASE,
++    /**< Selects polyphase filter. Used for both down as well as up scaling.
++         When selected decimation is disabled. Used for all
++         scaling ratio > 0.5x. */
++        ISS_SC_HST_MAX
++    /**< Should be the last value of this enumeration.
++         Will be used by driver for validating the input parameters. */
++    };
++
++/**
++ *  enum Iss_ScVertScalarType
++ *  \brief This defines type of vertical scaling. Vertical
++ *  scaling two types scalars i.e. running average filter and polyphase filter.
++ *  The output of the running average filter is based on weighted average
++ *  of pixels in the current and previous rows in vertical direction. Weighted
++ *  Running Average filter is used only for downscaling by more than 50%. For
++ *  other scaling ratios, polyphase scalar is used.
++ */
++    enum Iss_ScVertScalarType{
++        ISS_SC_VST_POLYPHASE = 0,
++    /**< Selects polyphase filter. Used for both down as well as up scaling. */
++        ISS_SC_VST_RAV,
++    /**< Uses Running Average Filter. Used for down scaling only. Vertical
++         Scaling ratio <= 0.5x should use RAV. */
++        ISS_SC_VST_MAX
++    /**< Should be the last value of this enumeration.
++         Will be used by driver for validating the input parameters. */
++    };
++
++/**
++ *  enum Iss_ScBiLinearIntpType
++ *  \brief Enum for specifying Scalar biliear interpolation type.
++ */
++    enum Iss_ScBiLinearIntpType{
++        ISS_SC_BINTP_ORIGINAL = 0,
++    /**< Original bilinear interpolation. */
++        ISS_SC_BINTP_MODIFIED,
++    /**< Modified bilinear interpolation. */
++        ISS_SC_BINTP_MAX
++    /**< Should be the last value of this enumeration.
++         Will be used by driver for validating the input parameters. */
++    };
++
++/**
++ *  enum Iss_ScSelfGenFid
++ *  \brief Enum for specifying whether Scalar generates FID or not.
++ */
++    enum Iss_ScSelfGenFid{
++        ISS_SC_SELF_GEN_FID_DISABLE = 0,
++    /**< Disable Self Generation of FID. */
++        ISS_SC_SELF_GEN_FID_ENABLE
++    /**< Enable Self Generation of FID. */
++    };
++
++    /* ==========================================================================
++     */
++    /* Structure Declarations */
++    /* ==========================================================================
++     */
++
++/**
++ *  struct Iss_ScCoeff
++ *  \brief Structure is used to provide application defined scalar coefficients.
++ *  Scalar provides functions to configure standard coefficients as per the
++ *  scaling ratio. If application wants to use its own set of coefficients, it
++ *  can point the pointers in the structure to the coefficient array and call
++ *  Sc_createUserCoeffOvly function to fill up coefficient memory.
++ */
++    struct Iss_ScCoeff{
++        u16 hsLuma[ISS_SC_HORZ_NUM_COEFF];
++    /**< Array in which horizontal polyphase filter coefficients for Luma
++         will be stored. */
++        u16 hsChroma[ISS_SC_HORZ_NUM_COEFF];
++    /**< Array in which horizontal polyphase filter coefficients for Chroma
++         will be stored. */
++        u16 vsLuma[ISS_SC_VERT_NUM_COEFF];
++    /**< Array in which vertical polyphase filter coefficients for Luma
++         will be stored. */
++        u16 vsChroma[ISS_SC_VERT_NUM_COEFF];
++    /**< Array in which vertical polyphase filter coefficients for Chroma
++         will be stored. */
++        u16 vsBilinearLuma[ISS_SC_BILINEAR_NUM_COEFF];
++    /**< Array in which bilinear polyphase filter coefficients for Luma
++         will be stored. */
++        u16 vsBilinearChroma[ISS_SC_BILINEAR_NUM_COEFF];
++    /**< Array in which bilinear polyphase filter coefficients for Chroma
++         will be stored. */
++    };
++
++/**
++ *  struct Iss_ScConfig
++ *  \brief Scalar parameters.
++ */
++    struct Iss_ScConfig{
++        u32 bypass;
++    /**< Scalar should be bypassed or not. */
++        u32 nonLinear;
++    /**< Flag to enabled the non linear scaling like from 16/9 aspect
++         ratio to 4/3 aspect ratio. */
++        u32 stripSize;
++    /**< Strip size for the non linear scaling. */
++        u32 vsType;
++    /**< Scalar type to used for vertical scaling.  Scalers are polyphase
++         and running average scalar. Polyphase filters can be used for both
++         up as well as down scaling.  Running average is used for downscaling
++         ratios <= 0.5x.
++         For valid values see #Iss_ScVertScalarType. */
++        u32 enablePeaking;
++    /**< Enable or disable peaking filter. Peaking filter is a low pass filter
++     * This should normally enabled for downscaling and disabled for up scaling
++     */
++        u32 enableEdgeDetect;
++    /**< Enables/disables edge detection. defConfFactor is only used when edge
++         detection is disabled. Edge detection is only available in high
++         quality scalar. */
++
++    };
++
++/**
++ *  struct Iss_ScCoeffParams
++ *  \brief Application interface structure for programming the coefficients.
++ *  Structure will be used for all drivers involving scalars.
++ */
++    struct Iss_ScCoeffParams{
++        u32 scalarId;
++    /**< Scalar ID - Used in case multiple scalars are present in a driver. */
++        u32 hScalingSet;
++    /**< Horizontal scaling coefficient set.
++     *   For valid values see #Iss_ScCoeffSet.
++     */
++        u32 vScalingSet;
++    /**< Vertical scaling coefficeint set.
++     *   For valid values see #Iss_ScCoeffSet.
++     */
++        int *coeffPtr;
++    /**< Pointer to provide user defined coefficients.
++     *   This should point to a valid #Iss_ScCoeff structure.
++     */
++    };
++
++/**
++ *  struct Iss_ScRtConfig
++ *  \brief Struture to configure runtime scalar parameters.
++ */
++    struct Iss_ScRtConfig{
++        u32 scBypass;
++    /**< To bypass the scalar .*/
++        u32 scSetPhInfo;
++    /**< Flag to indicate whether to program scalar phase information.
++         This is used only for subframe based processing to set scalar state for
++         required phase values by application.
++         If this flag is TRUE, following values are programmed:
++               for PolyPh : row_acc_inc, row_acc_offset,row_acc_offset_b
++               for RAV    : Sc_factor_rav, Row_acc_init_rav, Row_acc_init_rav_b
++         If this flag is FALSE, below values are ignored. */
++        u32 rowAccInc;
++    /**< Row accumulator increment for vertical polyphase filter. */
++        u32 rowAccOffset;
++    /**< Scalar phase value for vertical polyphase filter case for
++         top field/progressive input. */
++        u32 rowAccOffsetB;
++    /**< Scalar phase value for vertical polyphase filter case for
++         bottom field. */
++        u32 ravScFactor;
++    /**< Scaling factor for vertical running average filter. */
++        u32 ravRowAccInit;
++    /**< Scalar phase value for vertical running average filter case for
++         top field/progressive input. */
++        u32 ravRowAccInitB;
++    /**< Scalar phase value for vertical running average filter case for
++         bottom field. */
++    };
++
++/**
++ *  struct Iss_ScPeakingConfig
++ *  \brief This structure defines the parameters required to configure the
++ *  peaking block.
++ *
++ *  Peaking block increases the amplitude of high frequency luminance
++ *  information in horizontal direction to increase the sharpness of a video
++ *  image before it is scaled.
++ *  This configuration is for the advanced users and for debugging.
++ *  Normal applications should not use this structure.
++ */
++    struct Iss_ScPeakingConfig{
++        u8 hpfCoeff[ISS_SC_PEAKING_MAX_COEFF];
++    /**< Array of coefficients for 11 tap high pass filter. */
++        u8 hpfNormShift;
++    /**< HPF value will be right shifted by this value. */
++        u16 nlClipLimit;
++    /**< Non linear clipping limit. */
++        u16 nlLowThreshold;
++    /**< Coring threshold. */
++        u16 nlHighThreshold;
++    /**< High threshold for nonlinear peaking block. */
++        u16 nlLowSlopeGain;
++    /**< Slope of the nonlinear peaking function. */
++        u16 nlHighSlopeShift;
++    /**< Shift of the nonlinear peaking function. */
++    };
++
++/**
++ *  struct Iss_ScEdgeDetectConfig
++ *  \brief Edge Detection Params.
++ *
++ *  This block is used to detect edges in image to have edge directed scaling.
++ *  This block is available in high quality scalar only.
++ *  This configuration is for the advanced users and for debugging.
++ *  Normal applications should not use this structure.
++ *  confFactor - Defines confidence factor when edge detection is disabled.
++ */
++    struct Iss_ScEdgeDetectConfig{
++        u16 gradientThreshold;
++    /**< Threshold for the gradient for the edge strength test. */
++        u8 gradientRange;
++    /**< Define the soft switch range of the edge strength test. The range is
++         2^gradient_thr_range. */
++        u16 minGyThreshold;
++    /**< Threshold for the soft switch of the decay for small Gy. */
++        u8 minGyRange;
++    /**< Range for minimum Gy threshold. The range is 2^minGyRange. */
++        u16 chromaIntpThreshold;
++    /**< defines the difference-threshold between chroma pixels. If the
++         difference is less than this threshold, the interpolation of chroma
++         should be done along edge direction. Otherwise the interpolation
++         of chroma should be done vertically. */
++        u16 evThreshold;
++    /**< If abs(edge-vector) > ev_thr then luma output is based on a soft
++         switch between pixels along the edge and vertical. */
++        u8 deltaChromaThreshold;
++    /**< It defines the range for chroma soft switch based on pixel
++         differences. */
++        u8 deltaLumaThreshold;
++    /**< It defines the range of luma soft switch based on pixel difference. */
++        u8 deltaEvThreshold;
++    /**< It defines the range for chroma soft switch based on edge vector. */
++    };
++
++/**
++ *  struct Iss_ScAdvConfig
++ *
++ *  \brief This structure defines the parameters required to
++ *  configure scalar. It can be used to set the parameters in the scalar
++ *  registers as well as in the VPDMA register overlay. It also is used to
++ *  configure runtime changes in the scale ratio. For memory to memory and
++ *  display driver, all the parameters in the structure will be used and
++ *  configured. For the runtime changes, only size and position parameters will
++ *  be configured but still upper layer will have to pass all the parameters
++ *  because scalar uses these parameters to calculate ratio specific parameters.
++ *
++ *  WARNING: This for the advanced user for the tuning of the hardware
++ *  this strucutre should not be used by normal applications.
++ */
++    struct Iss_ScAdvConfig{
++        u32 tarWidth;
++    /**< Target image width.
++         Used only for read command. Don't care for write command. */
++        u32 tarHeight;
++    /**< Target image weight.
++         Used only for read command. Don't care for write command. */
++        u32 srcWidth;
++    /**< Source image width. This is the original non-cropped image width.
++         Used only for read command. Don't care for write command. */
++        u32 srcHeight;
++    /**< Source image height. This is the original non-cropped image height.
++         Used only for read command. Don't care for write command. */
++        u32 cropStartX;
++    /**< Horizontal offset of the cropped image. From this horizontal offset,
++         original image will be cropped. If cropping is not required, this
++         should be set to zero.
++         Used only for read command. Don't care for write command. */
++        u32 cropStartY;
++    /**< Vertical offset of the cropped image. From this vertical offset,
++         original image will be cropped. If cropping is not required, this
++         should be set to zero.
++         Used only for read command. Don't care for write command. */
++        u32 cropWidth;
++    /**< Cropped image width. Original image will be cropped to this size. If
++         cropping is not required, then this should same as the original image
++         size. Used only for read command. Don't care for write command. */
++        u32 cropHeight;
++    /**< Cropped image Height. Original image will be cropped to this size. If
++         cropping is not required, then this should same as the original image
++         size. Used only for read command. Don't care for write command. */
++        u32 inFrameMode;
++    /**< Input frame scan Format i.e interlaced or progressive.
++         For valid values see #FVID2_ScanFormat.
++         Used only for read command. Don't care for write command. */
++        u32 outFrameMode;
++    /**< Output Frame scanFormat i.e. interlaced or progressive. Input and
++         output frame mode can be different so that scalar can convert
++         one format to another. For valid values see #FVID2_ScanFormat.
++         Used only for read command. Don't care for write command */
++        u32 nonLinear;
++    /**< Flag to indicate whether linear or non-linear scaling is used for
++         horizontal scalar. Non-scaling is available for polyphase filter
++         only.
++         Used only for read command. Don't care for write command. */
++        u32 stripSize;
++    /**< Size of left and right strip for nonlinear horizontal scaling in terms
++         of pixel. It must be set to zero for linear horz scaling.
++         Used only for read command. Don't care for write command. */
++        u32 fidPol;
++    /**< This is used to specify whether input FID will be inverted before use
++         or not. For valid value see #Iss_FidPol.
++         Used only for read command. Don't care for write command. */
++        u32 selfGenFid;
++    /**< Flag to indicate whether to use self Generate FID feature of the
++         scalar. For valid value see #Iss_ScSelfGenFid.
++         Used only for read command. Don't care for write command. */
++        u32 bypass;
++    /**< Flag to indicate whether to bypass scalar or not.
++        Used only for read command. Don't care for write command. */
++
++        u32 hsType;
++    /**< This is used to specify horizontal scaling algorithm. Typically,
++         decimation is used for down scaling and polyphase filters are used
++         for up scaling.
++         For valid values see #Iss_ScHorzScalarType */
++        u32 vsType;
++    /**< This is used to specify vertical scaling algorithm. Typically, running
++         average filter is used for down scaling and polyphase filters are used
++         for up scaling.
++         For valid values see #Iss_ScVertScalarType */
++        u16 defConfFactor;
++    /**< Default confidence factor when edge detection is disabled. This is
++         used only for the high quality scalar where edge detection block is
++         available. */
++        u32 biLinIntpType;
++    /**< Variable to specify bilinear interpolation type.
++         For valid values see #Iss_ScBiLinearIntpType. */
++        u32 enableEdgeDetect;
++    /**< Enables/disables edge detection. defConfFactor is only used when edge
++         detection is disabled. Edge detection is only available in high
++         quality scalar. */
++        u32 hPolyBypass;
++    /**< Flag to bypass horizontal scalar. When enabled, it bypasses horizontal
++         polyphase scalar when tar_w = src_w or tar_w = src_w/2 or
++         tar_w = src_w/4. When disabled, polyphase scalar is always used
++         regardless of the width configuration. */
++        u32 enablePeaking;
++    /**< Flag to enable peaking block in the scalar. All the
++         coefficients required for the peaking block are already configured
++         as part of initialization. */
++        u32 rowAccInc;
++    /**< Row accumulator increment for vertical polyphase filter. */
++        u32 rowAccOffset;
++    /**< Scalar phase value for vertical polyphase filter case for
++         top field/progressive input. */
++        u32 rowAccOffsetB;
++    /**< Scalar phase value for vertical polyphase filter case for
++         bottom field. */
++        u32 ravScFactor;
++    /**< Scaling factor for vertical running average filter. */
++        u32 ravRowAccInit;
++    /**< Scalar phase value for vertical running average filter case for
++         top field/progressive input. */
++        u32 ravRowAccInitB;
++    /**< Scalar phase value for vertical running average filter case for
++         bottom field. */
++        struct Iss_ScPeakingConfig *peakingCfg;
++    /**< Pointer to peaking params.
++         If this is NULL configuation will not be applied. Else configuration
++         for this will be applied.
++         Values applied will be applicable to all the channels of the driver.
++         This is not per channel configuration. */
++        struct Iss_ScEdgeDetectConfig *edgeDetectCfg;
++    /**< Pointer to edege detect parameters.
++         If this is NULL configuation will not be applied. Else configuration
++         for this will be applied.
++         Values applied will be applicable to all the channels of the driver.
++         This is not per channel configuration. */
++        int *reserved;
++    /**< Currently not used. It should be NULL. */
++    };
++
++/**
++ *  sturct Iss_ScRdWrAdvCfg
++ *  \brief Structure to read/write to advance scalar registers.
++ */
++    struct Iss_ScRdWrAdvCfg{
++        u32 chNum;
++    /**< Channel number for which the configuration is to be set/get.
++         Used only in M2M driver, for display and capture driver set
++         this to 0. */
++        u32 scalarId;
++    /**< Scalar ID - Used in case multiple scalars are present in a driver. */
++        struct Iss_ScAdvConfig scAdvCfg;
++    /**< Advanced scalar configuration to be read/write. */
++    };
++
++    /* ==========================================================================
++     */
++    /* Function Declarations */
++    /* ==========================================================================
++     */
++
++    /* None */
++
++#ifdef __cplusplus
++}
++#endif
++#endif
++/* @} */

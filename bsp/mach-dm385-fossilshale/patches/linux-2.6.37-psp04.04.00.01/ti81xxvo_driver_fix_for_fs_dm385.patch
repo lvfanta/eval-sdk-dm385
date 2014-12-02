@@ -1,0 +1,163 @@
+Index: kernel/linux-2.6.37-psp04.04.00.01/drivers/video/ti81xx/vpss/video.c
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/drivers/video/ti81xx/vpss/video.c	2014-08-07 15:01:03.486230381 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/drivers/video/ti81xx/vpss/video.c	2014-08-09 11:22:25.142998218 -0600
+@@ -824,8 +824,8 @@
+ 	int r;
+ 	VPSSDBG("Set dei/scalar config params\n");
+ 
+-	vctrl->vdeicrpcfg->cropstartx = deiparams->deisccropcfg->cropstartx;
+-	vctrl->vdeicrpcfg->cropstarty = deiparams->deisccropcfg->cropstarty;
++	vctrl->vdeicrpcfg->cropstartx = deiparams->startx;
++	vctrl->vdeicrpcfg->cropstarty = deiparams->starty;
+ 	vctrl->vdeiprm->sctarwidth = w;
+ 	vctrl->vdeiprm->sctarheight = h;
+ 	vctrl->vdeiprm->fmt.height = scalar_prm.inframe_height;
+@@ -840,6 +840,7 @@
+ 		IOCTL_VPS_DEI_DISP_SET_PARAMS,
+ 		(struct vps_dei_disp_params *)vctrl->vdei_phy,
+ 		NULL);
++
+ 	if (r)
+ 		VPSSERR("set dei/scalar failed\n");
+ 	return r;
+Index: kernel/linux-2.6.37-psp04.04.00.01/drivers/media/video/ti81xx/ti81xxvin_main.c
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/drivers/media/video/ti81xx/ti81xxvin_main.c	2014-08-07 15:01:03.294230390 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/drivers/media/video/ti81xx/ti81xxvin_main.c	2014-08-11 10:55:45.347161267 -0600
+@@ -1299,6 +1299,7 @@
+ 		return -ERESTARTSYS;
+ 
+ 	/* Call querystd function of decoder device */
++#if 0	
+ 	sd_index = inst->curr_sd_index;
+ 	ret = v4l2_subdev_call(ti81xxvin_obj.sd[sd_index], video,
+ 			query_dv_preset, qpreset);
+@@ -1313,12 +1314,40 @@
+ 
+ 	ret = v4l2_subdev_call(ti81xxvin_obj.sd[sd_index], video,
+ 			g_mbus_fmt, &mbus_framefmt);
++
++/* Set static values */
++
++#endif	/* Get the information about the standard */
++
++//	 mbus_framefmt.width = 800;
++	 mbus_framefmt.width = 720;
++         mbus_framefmt.height = 480;
++//         mbus_framefmt.height = 600;
++         mbus_framefmt.code = V4L2_MBUS_FMT_YUYV8_2X8;
++//         mbus_framefmt.code = V4L2_MBUS_FMT_Y8_1X8;
++//         mbus_framefmt.code = V4L2_MBUS_FMT_RGB565_2X8_LE;
++//         mbus_framefmt.code = V4L2_MBUS_FMT_UYVY8_2X8;
++
++//         mbus_framefmt.field = V4L2_FIELD_NONE;
++         mbus_framefmt.field = V4L2_FIELD_INTERLACED;
++         mbus_framefmt.colorspace = V4L2_COLORSPACE_REC709;
++//	mbus_framefmt.colorspace = V4L2_COLORSPACE_SMPTE170M;
++//         mbus_framefmt.field = V4L2_COLORSPACE_SMPTE170M;
++ 
++         qpreset->preset = V4L2_DV_480P59_94;
++//         inst->video.cur_dv_preset.preset = V4L2_DV_INVALID;
++         inst->video.cur_dv_preset.preset = V4L2_DV_480P59_94;
++//         inst->video.cur_std_id = V4L2_STD_ALL;
++         inst->video.cur_std_id = V4L2_STD_NTSC;
++
++         inst->video.cur_dv_preset = *qpreset;
+ 	/* Get the information about the standard */
+ 	if (ti81xxvin_update_std_info(inst, &mbus_framefmt)) {
+ 		ret = -EINVAL;
+ 		ti81xxvin_err("Error getting the standard info\n");
+ 		goto vidioc_query_dv_preset_exit;
+ 	}
++#if 0
+ 	subdev_info = config->subdev_info;
+ 	if (subdev_info[sd_index].ti81xxvin_set_mode) {
+ 		switch (inst->video.cur_dv_preset.preset) {
+@@ -1342,7 +1371,7 @@
+ 					FVID2_STD_1080P_60);
+ 		}
+ 	}
+-	/* Configure the default format information according to the std
++#endif	/* Configure the default format information according to the std
+ 	 * selected
+ 	 */
+ 	ti81xxvin_config_format(inst);
+@@ -1382,9 +1411,9 @@
+ 		" for sub devices\n");
+ 		goto querystd_exit;
+ 	}
+-	inst->video.cur_dv_preset.preset = V4L2_DV_INVALID;
++/*	inst->video.cur_dv_preset.preset = V4L2_DV_INVALID;
+ 	inst->video.cur_std_id = V4L2_STD_UNKNOWN;
+-	inst->video.cur_std_id = *norm;
++	inst->video.cur_std_id = *norm;*/
+ 
+ 	ret = v4l2_subdev_call(ti81xxvin_obj.sd[inst->curr_sd_index], video,
+ 			g_mbus_fmt, &mbus_framefmt);
+@@ -1436,6 +1465,7 @@
+ 	/* Call encoder subdevice function to set the standard */
+ 	if (mutex_lock_interruptible(&buf_obj->buf_lock))
+ 		return -ERESTARTSYS;
++#if 0
+ 	/* Call the V4l2 subdev to set the preset */
+ 	ret = v4l2_subdev_call(ti81xxvin_obj.sd[inst->curr_sd_index], video,
+ 			s_dv_preset, dv_preset);
+@@ -1447,6 +1477,25 @@
+ 
+ 	ret = v4l2_subdev_call(ti81xxvin_obj.sd[inst->curr_sd_index], video,
+ 			g_mbus_fmt, &mbus_framefmt);
++
++/* Set static values */
++
++#endif
++
++	 mbus_framefmt.width = 720;
++         mbus_framefmt.height = 480;
++//         mbus_framefmt.code = V4L2_MBUS_FMT_RGB565_2X8_LE;
++         mbus_framefmt.code = V4L2_MBUS_FMT_YUYV8_2X8; 
++
++         mbus_framefmt.field = V4L2_FIELD_INTERLACED;
++//         mbus_framefmt.colourspace = V4L2_COLORSPACE_SMPTE170M;
++         mbus_framefmt.colorspace = V4L2_COLORSPACE_REC709;
++ 
++/*         qpreset->preset = V4L2_DV_INVALID;
++         inst->video.cur_dv_preset.preset = V4L2_DV_INVALID;
++         inst->video.cur_std_id = V4L2_STD_ALL;
++
++         inst->video.cur_dv_preset = *qpreset;*/
+ 	/* Get the information about the standard */
+ 	if (ti81xxvin_update_std_info(inst, &mbus_framefmt)) {
+ 		ret = -EINVAL;
+@@ -1504,7 +1553,7 @@
+ 	if (ret)
+ 		goto s_std_exit;
+ 	inst->video.cur_dv_preset.preset = V4L2_DV_INVALID;
+-	inst->video.cur_std_id = V4L2_STD_UNKNOWN;
++	inst->video.cur_std_id = V4L2_STD_NTSC;
+ 	inst->video.cur_std_id = *norm;
+ 
+ 	ret = v4l2_subdev_call(ti81xxvin_obj.sd[inst->curr_sd_index], video,
+@@ -2509,12 +2558,14 @@
+ 	}
+ 
+ 	/* TODO Get the proper adapter id */
++/*
+ 	if (cpu_is_ti814x())
+ 		i2c_adap = i2c_get_adapter(3);
+ 	else if (cpu_is_ti816x())
+ 		i2c_adap = i2c_get_adapter(2);
+ 	else
+ 		i2c_adap = i2c_get_adapter(2);
++*/
+ 
+ 	config = pdev->dev.platform_data;
+ 	subdev_count = config->subdev_count;
+@@ -2535,6 +2586,7 @@
+ 	}
+ 	for (i = 0; i < 1; i++) {
+ 		subdevdata = &config->subdev_info[i];
++		i2c_adap = i2c_get_adapter(subdevdata->i2c_adapter_id);
+ 		ti81xxvin_obj.sd[i] =
+ 			v4l2_i2c_new_subdev_board(&ti81xxvin_obj.v4l2_dev,
+ 						  i2c_adap,

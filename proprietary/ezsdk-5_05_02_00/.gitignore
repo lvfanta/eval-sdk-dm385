@@ -1,0 +1,16 @@
+# RidgeRun SDK ezsdk drived items
+ezsdk
+audio_codecs_checked
+m3_code_checked
+cmem_built
+coprocessors.init
+edma3lld_built
+media_controller_utils_built
+omtb_built
+omx_built
+osal_built
+rpe_app_built
+rpe_dsp_built
+rpe_linux_built
+syslink_dsp_built
+syslink_linux_built

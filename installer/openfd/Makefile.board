@@ -1,0 +1,59 @@
+#$L$
+# Copyright (C) 2013-2014 Ridgerun (http://www.ridgerun.com). 
+#$L$
+
+.PHONY: installbootloader installkernel installfs installcmdline installbootcmd installmtdparts
+
+# Host IPv4 address
+
+# (only investigate the network settings if the user is trying to install something)
+ifeq ($(findstring install,$(MAKECMDGOALS)),install)
+ifeq ($(CONFIG_INSTALLER_TFTP_METHOD),y)
+HOST_IP ?= $(shell $(DEVDIR)/bsp/scripts/find_ip_address.sh $(CONFIG_INSTALLER_HOST_NET_INTERFACE))
+ifeq ($(HOST_IP),)
+$(error Unable to identify the IP address of your machine on interface $(CONFIG_INSTALLER_HOST_NET_INTERFACE), check your configuration variable INSTALLER_HOST_NET_INTERFACE and verify your network connection is alive)
+endif
+endif
+endif
+
+# Communication args
+
+ifeq ($(CONFIG_INSTALLER_SERIAL_COM),y)
+COMM_ARGS = --serial-port $(CONFIG_INSTALLER_SERIAL_COM_PORT) \
+  --serial-baud $(CONFIG_INSTALLER_SERIAL_COM_BAUD)
+else ifeq ($(CONFIG_INSTALLER_TELNET_COM),y)
+COMM_ARGS = --telnet-host $(CONFIG_INSTALLER_TELNET_COM_IP) \
+  --telnet-port $(CONFIG_INSTALLER_TELNET_COM_PORT)
+endif
+
+# TFTP args
+
+TFTP_ARGS = --host-ip-addr $(HOST_IP) \
+  --tftp-dir $(CONFIG_INSTALLER_TFTP_SERVER_DIRECTORY) \
+  --tftp-port 69
+ifeq ($(CONFIG_INSTALLER_STATIC_IP),y)
+TFTP_ARGS+= --board-net-mode static --board-ip-addr $(CONFIG_INSTALLER_IPADDR)
+endif
+
+# NAND mode
+
+NAND_MMAP_FILE?=$(IMAGEDIR)/nand-mmap.config
+
+NAND_ARGS = --mmap-file $(NAND_MMAP_FILE) --ram-load-addr $(CONFIG_INSTALLER_LOAD_ADDRS)
+ifneq ($(CONFIG_BSP_NAND_BLOCK_SIZE),)
+NAND_ARGS+= --nand-blk-size $(CONFIG_BSP_NAND_BLOCK_SIZE)
+endif
+ifneq ($(CONFIG_BSP_NAND_PAGE_SIZE),)
+NAND_ARGS+= --nand-page-size $(CONFIG_BSP_NAND_PAGE_SIZE)
+endif
+NAND_ARGS+= $(COMM_ARGS) $(TFTP_ARGS)
+
+# RAM mode
+
+RAM_ARGS = $(COMM_ARGS) $(TFTP_ARGS)
+
+# Env mode
+
+ENV_ARGS = $(COMM_ARGS)
+
+include $(INSTALLERDIR)/mach/Makefile.board

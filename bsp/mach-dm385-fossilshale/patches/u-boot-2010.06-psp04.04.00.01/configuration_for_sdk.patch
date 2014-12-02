@@ -1,0 +1,13 @@
+Index: u-boot-2010.06/src/include/configs/ti8148_evm.h
+===================================================================
+--- u-boot-2010.06.orig/src/include/configs/ti8148_evm.h	2012-02-09 13:26:06.942236568 -0600
++++ u-boot-2010.06/src/include/configs/ti8148_evm.h	2012-02-09 13:26:30.502226870 -0600
+@@ -153,6 +153,8 @@
+ #undef  CONFIG_SYS_CLKS_IN_HZ				/* everything, incl board info, in Hz */
+ #define CONFIG_SYS_LOAD_ADDR		0x81000000  	/* Default load address */
+ #define CONFIG_SYS_HZ			1000        	/* 1ms clock */
++#define CONFIG_CMD_ENV                 /*Enable env command    */
++#define CONFIG_CMD_ASKENV              /*Enable askenv command */
+ 
+ /* Hardware related */
+ 

@@ -1,0 +1,13 @@
+v=0
+o=- 1188340 656180883 1 IN IP4 0.0.0.0
+s=Camera Software Demo
+i=SDP test file	for the	camera software	demo
+e=NONE
+t=0 0
+a=tool:GStreamer
+a=type:broadcast
+a=control:*
+a=range:npt=now-
+m=video 5000 RTP/AVP 96
+c=IN IP4 0.0.0.0
+a=rtpmap:96 H264/90000

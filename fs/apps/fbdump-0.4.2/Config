@@ -1,0 +1,7 @@
+config FS_APPS_FBDUMP
+	bool "fbdump 0.4.2"
+	default n
+	help
+	fbdump is a simple tool that captures the contents of the visible 
+	portion of the Linux framebuffer device and writes it to the standard 
+	output as a PPM file. (more: http://www.rcdrummond.net/fbdump/)

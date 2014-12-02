@@ -1,0 +1,91 @@
+Index: ezsdk-5_05_02_00/ezsdk/board-support/media-controller-utils_3_00_00_05/src/prcm_config/ti814x-evm/prcm_config_app.c
+===================================================================
+--- ezsdk-5_05_02_00.orig/ezsdk/board-support/media-controller-utils_3_00_00_05/src/prcm_config/ti814x-evm/prcm_config_app.c	2014-10-20 14:04:03.962588453 -0600
++++ ezsdk-5_05_02_00/ezsdk/board-support/media-controller-utils_3_00_00_05/src/prcm_config/ti814x-evm/prcm_config_app.c	2014-10-20 14:53:31.102732054 -0600
+@@ -83,6 +83,22 @@
+  * PRCM base address
+  */
+ #define PRCM_BASE_ADDR                  (0x48180000)
++#define DMM_BASE_ADDR					(0x4E000000)
++#define EMIF4_0_CFG_BASE_ADDR			(0x4C000000)
++#define EMIF4_1_CFG_BASE_ADDR			(0x4D000000)
++#define GPMC_MEM_BASE_ADDR				(0x02000000)
++#define DDR_MEM_BASE_ADDR				(0x80000000)
++#define DUCATI_BASE_ADDR	    		(0x55020000)
++#define DUCATI_MMU_CFG					(0x55080000)
++#define CTRL_MODULE_BASE_ADDR			(0x48140000)
++#define GEM_L2RAM_BASE_ADDR				(0x40800000)
++
++/* Control Module*/
++#define	CM_CTRL_CLKCTRL					(0x481815c4)
++#define DSPBOOTADDR						(CTRL_MODULE_BASE_ADDR + 0x0048)
++#define DSPMEM_SLEEP					(CTRL_MODULE_BASE_ADDR + 0x0650)
++#define CM_ALWON_L3_SLOW_CLKSTCTRL		(PRCM_BASE_ADDR + 0x1400)
++#define CM_ALWON_GPIO_1_CLKCTRL 		(PRCM_BASE_ADDR + 0x1560)
+ 
+ /* IVAHD0 PRCM memory register base addresses */
+ #define CM_IVAHD0_CLKSTCTRL             (PRCM_BASE_ADDR + 0x0600) 
+@@ -192,6 +208,54 @@
+   disp_deviceType();
+ }
+ 
++void ISS_A8_Enable(void)
++{
++     WR_MEM_32(0x48180D00, 0x2); //PM_ISP_PWRSTCTRL
++     WR_MEM_32(0x48180D10, 0x3); //RM_ISP_RSTCTRL
++     WR_MEM_32(0x48180700, 0x2) ; //CM_ISP_CLKSTCTRL
++     WR_MEM_32(0x48180720, 0x2) ;  //CM_ISP_ISP_CLKCTRL
++     WR_MEM_32(0x48180724, 0x2) ;  //CM_ISP_FDIF_CLKCTRL
++
++     //GEL_TextOut("\tPRCM for ISS Done Successfully.....  \n","Output",1,1,1);
++
++    /* I2c2  configuration Function 6*/
++    WR_MEM_32((CTRL_MODULE_BASE_ADDR + 0x0924), 0x60020); /* i2c2_scl_mux0 */
++    WR_MEM_32((CTRL_MODULE_BASE_ADDR + 0x0928), 0x60020); /* i2c2_sda_mux0 */
++
++    /* I2c0 configuration function 1 TODO Remove this */
++    WR_MEM_32((CTRL_MODULE_BASE_ADDR + 0x0c18), 0x60001);   /* i2c0_scl */
++    WR_MEM_32((CTRL_MODULE_BASE_ADDR + 0x0c1c), 0x60001);   /* i2c0_sda */
++
++    /* Set the access to the I2c registers */
++    WR_MEM_32((PRCM_BASE_ADDR + 0x1564), 0x2);
++    WR_MEM_32((PRCM_BASE_ADDR + 0x1568), 0x2);
++
++
++    WR_MEM_32(CM_ALWON_GPIO_1_CLKCTRL, RD_MEM_32(CM_ALWON_GPIO_1_CLKCTRL) | 0x2);
++
++    WR_MEM_32((CTRL_MODULE_BASE_ADDR + 0x0AAC), 0x00060002);    // CAM_HSYNC        PINCNTL172[1]
++    WR_MEM_32((CTRL_MODULE_BASE_ADDR + 0x0AB0), 0x00060002);    // CAM_VSYNC        PINCNTL173[1]
++    WR_MEM_32((CTRL_MODULE_BASE_ADDR + 0x0AB8), 0x00060002);    // CAM_PCLK         PINCNTL175[1]
++    WR_MEM_32((CTRL_MODULE_BASE_ADDR + 0x0A58), 0x00060020);    // CAM_WEn          PINCNTL151[5] cam_de_mux1
++    WR_MEM_32((CTRL_MODULE_BASE_ADDR + 0x0A60), 0x00060080);    // gpio2[18]        PINCNTL153[7] // 0x00060080   CAM_RST          PINCNTL153[5]
++    WR_MEM_32((CTRL_MODULE_BASE_ADDR + 0x0A64), 0x00060020);    // CAM_STROBE       PINCNTL154[5]
++    WR_MEM_32((CTRL_MODULE_BASE_ADDR + 0x0A68), 0x00060020);    // CAM_SHTR         PINCNTL155[5]
++    WR_MEM_32((CTRL_MODULE_BASE_ADDR + 0x0AA8), 0x00060002);    // CAM_D0           PINCNTL171[1]
++    WR_MEM_32((CTRL_MODULE_BASE_ADDR + 0x0AA4), 0x00060002);    // CAM_D1           PINCNTL170[1]
++    WR_MEM_32((CTRL_MODULE_BASE_ADDR + 0x0AA0), 0x00060002);    // CAM_D2           PINCNTL169[1]
++    WR_MEM_32((CTRL_MODULE_BASE_ADDR + 0x0A9C), 0x00060002);    // CAM_D3           PINCNTL168[1]
++    WR_MEM_32((CTRL_MODULE_BASE_ADDR + 0x0A98), 0x00060002);    // CAM_D4           PINCNTL167[1]
++    WR_MEM_32((CTRL_MODULE_BASE_ADDR + 0x0A94), 0x00060002);    // CAM_D5           PINCNTL166[1]
++    WR_MEM_32((CTRL_MODULE_BASE_ADDR + 0x0A90), 0x00060002);    // CAM_D6           PINCNTL165[1]
++    WR_MEM_32((CTRL_MODULE_BASE_ADDR + 0x0A8C), 0x00060002);    // CAM_D7           PINCNTL164[1]
++    WR_MEM_32((CTRL_MODULE_BASE_ADDR + 0x0A6C), 0x00060002);    // CAM_D8           PINCNTL156[1]
++    WR_MEM_32((CTRL_MODULE_BASE_ADDR + 0x0A70), 0x00060002);    // CAM_D9           PINCNTL157[1]
++    WR_MEM_32((CTRL_MODULE_BASE_ADDR + 0x0A74), 0x00060002);    // CAM_D10          PINCNTL158[1]
++    WR_MEM_32((CTRL_MODULE_BASE_ADDR + 0x0A78), 0x00060002);    // CAM_D11          PINCNTL159[1]
++
++     //GEL_TextOut("\tSensor Config Successfully.....  \n","Output",1,1,1);
++}
++
+ /* Do PRCM for IVAHD0 */
+ static void IVAHD0ClkEnable()
+ {
+@@ -329,6 +393,8 @@
+     case 's':
+       printf ("Doing PRCM settings...\n");
+       prcmInit();
++      printf ("Doing ISS initialization...\n");
++      ISS_A8_Enable();
+       break;
+ 
+     case 'p':

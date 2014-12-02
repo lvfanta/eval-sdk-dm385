@@ -1,0 +1,10 @@
+linux_include_support_fs_dm385.patch
+drivers_support_fs_dm385.patch
+plat-omap_support_fs_dm385.patch
+mach-omap2_support_fs_dm385.patch
+all_changes_support_fs_dm385.patch
+build_fix_fs_dm385.patch
+ti81xxvo_driver_fix_for_fs_dm385.patch
+ov5640_sensor_driver_integration_for_fs_dm385.patch
+debug_v4l2_driver_iss.patch
+gstreamer_support_dm385_kernel.patch

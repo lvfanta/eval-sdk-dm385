@@ -1,0 +1,111 @@
+#
+# Ridgerun file system configuration files
+# all definitions on this subtree must prefix with FS_
+#
+
+menu "File System Configuration"
+
+# File system target configuration
+
+comment "File system target image configuration  ---"
+
+source fs/fstargets/Config
+
+choice
+	prompt "File system image target"
+source fs/fstargets/ConfigExtra
+endchoice
+
+source fs/fstargets/ConfigExtra.options
+
+config FS_STRIPFS
+	bool "Strip the target file system binaries (may render debug useless)"
+	help
+	  Enabling this option will strip the file system binaries of 
+          all debug and other symbols. 
+          If you are debugging applications, with gdb or oprofile, disable 
+          this option. 
+
+config FS_FSROOT
+	string "Target file system destination directory -- leave blank to use $DEVDIR/fs/fs"
+	default ""
+	help
+	  If you are using a source code management system, like ClearCase, or file
+	  system that doesn't allow certian files to be created, such as device files,
+	  then you can have the target file system $FSROOT located in a directory other
+	  that within in the development directory $DEVDIR.  If this value is not blank,
+	  the the actual directory used for $FSROOT is the directory specified here, plus
+	  the basename of the $DEVDIR, plus "fs".  For example, if $FS_FSROOT is
+	  /opt/target_file_systems and $DEVDIR is $HOME/work/dm385sdk, then the target
+	  file system can be found in /opt/target_file_systems/dm385sdk/fs.  You also
+	  should change busybox install directory CONFIG_PREFIX to "arm".
+
+config FS_READ_ONLY
+        bool "Read Only File System"
+        help
+	  Mounts file system as Read only, also copy content from: DEVDIR/fs/overlay-ro into file system
+	  It is recommended to use make remove_fs when selecting/deselecting this option.
+	  More information at: [ TO DO: URL to developers wiki]
+
+comment "File system contents ---"
+menu "Select target's file system software"
+
+source fs/apps/ConfigExtra
+
+source fs/arch/ConfigExtra
+
+source fs/mach/ConfigExtra
+
+endmenu
+
+#
+# This options are only be available for platforms with
+# support for pre-built packages
+#
+
+config FS_YOCTO_SUPPORT
+	bool
+	default y
+
+if FS_YOCTO_SUPPORT
+
+menuconfig FS_YOCTO
+	bool "Enable yocto binary package support"
+	help
+	  Enable section of pre-built yocto packages.  If the package you
+	  require is not in the list, please contact RidgeRun.
+
+if FS_YOCTO
+config FS_YOCTO_AUTO_UPDATE
+       bool "Auto-update yocto available packages"
+       default n
+       depends on FS_YOCTO     
+       help
+        This option allows the SDK to refresh the list of pre-built packages received from the RR web server
+	whenever the user access the config menu.
+
+config FS_YOCTO_DEBUG
+	bool "Deploy debug version of packages"
+	depends on FS_YOCTO
+	help
+	  yocto packages are built optimized for use in a release product and
+	  built with debug symbols and other debug related capabilities.  This
+	  menu idem is a global setting which applies to all selected yocto
+	  packages.
+comment "Available yocto packages"
+
+source fs/mach/Config.yocto
+
+endif # FS_YOCTO
+endif# FS_YOCTO_SUPPORT
+
+# Toolchain file system components configuration
+
+source toolchain/Config.fs
+
+config FS_INTERNALS
+	bool
+	default y
+	select WC
+
+endmenu

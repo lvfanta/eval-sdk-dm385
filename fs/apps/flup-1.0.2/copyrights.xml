@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<component>
+	<name>flup</name>
+	<version>1.0.2</version>
+	<releaseDate></releaseDate>
+	<manufacturer>http://trac.saddi.com/flup</manufacturer>
+	<summary>Flup offers three sets of WSGI servers/gateways, which speak AJP 1.3, FastCGI, and SCGI. Each server comes in two flavors: a threaded version, and a forking version.</summary>
+	<link>http://trac.saddi.com/flup</link>
+	<issues>
+		<link><![CDATA[]]></link>
+	</issues>
+	<license type="BSD-3-Clause">
+		<link>http://trac.saddi.com/flup</link>
+		<text>
+			<![CDATA[
+            ]]>
+		</text>
+	</license>
+</component>
+

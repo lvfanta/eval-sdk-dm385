@@ -1,0 +1,7 @@
+config FS_APPS_PYTHON
+	bool "python-2.7.2"
+	default n
+	select FS_APPS_ZLIB
+	select FS_APPS_READLINE
+	help
+	Python is a widely-used general-purpose scripting language.

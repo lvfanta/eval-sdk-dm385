@@ -1,0 +1,40 @@
+#$L$
+# Copyright (C) 2013 Ridgerun (http://www.ridgerun.com). 
+#$L$
+
+ifeq ($(CONFIG_INSTALLER_MODE_SD_CARD),y)
+SD_MMAP_FILE?=$(IMAGEDIR)/sd-mmap.config
+else ifeq ($(CONFIG_INSTALLER_MODE_ATTACHED_BOARD),y)
+ifeq ($(CONFIG_FS_TARGET_SD),y)
+SD_MMAP_FILE?=$(IMAGEDIR)/sd-fs-mmap.config
+endif
+endif
+
+SD_ARGS= --mmap-file $(SD_MMAP_FILE)
+
+installfsonly-goal := $(filter installfs, $(MAKECMDGOALS))
+
+installnotimplemented:
+ifeq ($(CONFIG_INSTALLER_MODE_SD_CARD),y)
+	$(V) echo -e "Target not implemented in CONFIG_INSTALLER_MODE_SD_CARD" 
+	$(V) echo -e "Try: make install"
+endif
+
+installbootloader: installnotimplemented
+installkernel: installnotimplemented
+installkernelram: installnotimplemented
+installfs::
+ifeq ($(CONFIG_INSTALLER_MODE_ATTACHED_BOARD),y)
+ifeq ($(CONFIG_FS_TARGET_SD),y)
+ifdef installfsonly-goal
+	$(V) $(MAKE) installfsonly
+endif
+endif
+else
+	$(V) $(MAKE) installnotimplemented
+endif
+installcmdline: installnotimplemented
+installbootcmd: installnotimplemented
+installmtdparts: installnotimplemented
+
+include $(INSTALLERDIR)/mach/Makefile.sd  

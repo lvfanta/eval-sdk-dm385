@@ -1,0 +1,4 @@
+The following non-standard packages are needed to run the server on the host PC:
+
+sudo apt-get install python-flup 
+sudo apt-get install python-flask

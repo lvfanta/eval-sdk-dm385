@@ -1,0 +1,20 @@
+config USER_APPS_NETCAM
+	bool "RidgeRun Python Network Camera"
+	select FS_APPS_PYTHON
+	select FS_APPS_PYTHON_FLASK
+	select FS_APPS_PYGOBJECT
+	select FS_APPS_GST_PYTHON
+	select FS_APPS_PYTHON_FLUP
+	default n
+	help
+	    Network camera viewable and controllable via a web browser
+	    or using JSON HTTP commands.
+
+config USER_APPS_NETCAM_USE_PYTHON_SOURCE
+	bool "Development mode where Python source is used on target file system"
+	depends on USER_APPS_NETCAM
+	default n
+	help
+	    For performance, the pre-compiled *.pyo files are installed on the target device.
+	    For convenient modification to have the python source on the target device, the
+	    python source can be installed instead.

@@ -1,0 +1,67 @@
+Index: gstreamer-0.10.36/src/gst/gstinfo.c
+===================================================================
+--- gstreamer-0.10.36.orig/src/gst/gstinfo.c	2011-12-29 19:14:34.000000000 -0600
++++ gstreamer-0.10.36/src/gst/gstinfo.c	2014-11-06 13:43:27.384274583 -0600
+@@ -98,7 +98,7 @@
+ #ifdef HAVE_DLFCN_H
+ #  include <dlfcn.h>
+ #endif
+-#ifdef HAVE_PRINTF_EXTENSION
++#ifdef GST_USING_PRINTF_EXTENSION
+ #  include <printf.h>
+ #endif
+ #include <stdio.h>              /* fprintf */
+@@ -218,7 +218,7 @@
+ static void gst_debug_reset_threshold (gpointer category, gpointer unused);
+ static void gst_debug_reset_all_thresholds (void);
+ 
+-#ifdef HAVE_PRINTF_EXTENSION
++#ifdef GST_USING_PRINTF_EXTENSION
+ static int _gst_info_printf_extension_ptr (FILE * stream,
+     const struct printf_info *info, const void *const *args);
+ static int _gst_info_printf_extension_segment (FILE * stream,
+@@ -334,7 +334,7 @@
+   /* get time we started for debugging messages */
+   _priv_gst_info_start_time = gst_util_get_timestamp ();
+ 
+-#ifdef HAVE_PRINTF_EXTENSION
++#ifdef GST_USING_PRINTF_EXTENSION
+ #ifdef HAVE_REGISTER_PRINTF_SPECIFIER
+   register_printf_specifier (GST_PTR_FORMAT[0], _gst_info_printf_extension_ptr,
+       _gst_info_printf_extension_arginfo);
+@@ -717,7 +717,7 @@
+   return g_strdup_printf ("%p", ptr);
+ }
+ 
+-#ifdef HAVE_PRINTF_EXTENSION
++#ifdef GST_USING_PRINTF_EXTENSION
+ 
+ static gchar *
+ gst_debug_print_segment (gpointer ptr)
+@@ -761,7 +761,7 @@
+   }
+ }
+ 
+-#endif /* HAVE_PRINTF_EXTENSION */
++#endif /* GST_USING_PRINTF_EXTENSION */
+ 
+ /**
+  * gst_debug_construct_term_color:
+@@ -1642,7 +1642,7 @@
+ 
+ /*** PRINTF EXTENSIONS ********************************************************/
+ 
+-#ifdef HAVE_PRINTF_EXTENSION
++#ifdef GST_USING_PRINTF_EXTENSION
+ static int
+ _gst_info_printf_extension_ptr (FILE * stream, const struct printf_info *info,
+     const void *const *args)
+@@ -1699,7 +1699,7 @@
+   }
+   return 1;
+ }
+-#endif /* HAVE_PRINTF_EXTENSION */
++#endif /* GST_USING_PRINTF_EXTENSION */
+ 
+ static void
+ gst_info_dump_mem_line (gchar * linebuf, gsize linebuf_size,

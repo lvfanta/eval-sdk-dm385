@@ -1,0 +1,31 @@
+#
+# Ridgerun Bootloader configuration files
+# all definitions on this subtree must prefix with BTLR_
+#
+
+menu "Bootloader Configuration"
+
+source bootloader/ConfigExtra
+
+config UBOOT_DEBUG
+	bool "Compile U-Boot for debugging"
+	default n
+	help
+	    This option passes -fno-schedule-insns 
+	    and -fno-schedule-insns2 to the GCC in
+	    order to prevent a debugger from jumping
+	    arround the code when trying to single
+	    step. Further it adds -g to the GCC options
+	    to add debug symbols to the resulting
+	    ELF binary.
+
+config UBOOT_DEBUG_GDB
+	bool "Compile U-Boot with special GDB symbols"
+	default n
+	depends on UBOOT_DEBUG
+	help
+	    This option passes -ggdb instead of -g to
+	    the GCC. This is only usefull if GDB is used
+	    for debugging.
+
+endmenu

@@ -1,0 +1,23 @@
+Index: u-boot-2010.06/src/arch/arm/include/asm/arch-ti81xx/clocks_ti814x.h
+===================================================================
+--- u-boot-2010.06.orig/src/arch/arm/include/asm/arch-ti81xx/clocks_ti814x.h	2014-07-31 17:32:52.005772676 -0600
++++ u-boot-2010.06/src/arch/arm/include/asm/arch-ti81xx/clocks_ti814x.h	2014-10-09 13:32:21.222600213 -0600
+@@ -21,7 +21,8 @@
+ #ifndef _CLOCKS_TI814X_H_
+ #define _CLOCKS_TI814X_H_
+ 
+-#define DDR_PLL_400     /* Values supported 400,533 */
++#define DDR_PLL_533     /* Values supported 400,533 */
++/*#define DDR_PLL_400*/     /* Values supported 400,533 */
+ 
+ #define OSC_0_FREQ	20
+ 
+@@ -95,7 +96,7 @@
+ #define ISS_N		19
+ #define ISS_M		800
+ #ifdef CONFIG_DM385
+-#define ISS_M2		(opp_val_dm385(4, 4))
++#define ISS_M2		(opp_val_dm385(2, 2))
+ #else
+ #define ISS_M2		(pg_val_ti814x(2, 2))
+ #endif

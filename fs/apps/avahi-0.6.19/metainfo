@@ -1,0 +1,7 @@
+NAME="AVAHI"
+HOST_REQUIRED=""
+TARGET_REQUIRED="libdaemon-0.14 expat-2.0.1"
+DEFS_INCLUDE="$(AVAHI)/Output/include"
+DEFS_LIB="$(AVAHI)/Output/lib"
+DEFS_BIN="$(AVAHI)/Output/bin"
+DEFS_SBIN="$(AVAHI)/Output/sbin"

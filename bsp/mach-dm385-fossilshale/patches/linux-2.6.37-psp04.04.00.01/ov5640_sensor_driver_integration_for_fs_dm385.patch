@@ -1,0 +1,79 @@
+Index: kernel/linux-2.6.37-psp04.04.00.01/drivers/media/video/Makefile
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/drivers/media/video/Makefile	2012-08-30 05:48:03.000000000 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/drivers/media/video/Makefile	2014-08-26 23:21:48.843208405 -0600
+@@ -90,6 +90,9 @@
+ obj-$(CONFIG_SOC_CAMERA_RJ54N1)		+= rj54n1cb0c.o
+ obj-$(CONFIG_SOC_CAMERA_TW9910)		+= tw9910.o
+ 
++# Added OV5640 sensor camera for FossilShale DM385
++# obj-$(CONFIG_SOC_CAMERA_OV5640)		+= ov5640.o
++
+ # And now the v4l2 drivers:
+ 
+ obj-$(CONFIG_VIDEO_BT848) += bt8xx/
+Index: kernel/linux-2.6.37-psp04.04.00.01/drivers/media/video/Kconfig
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/drivers/media/video/Kconfig	2014-08-08 17:08:51.803120223 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/drivers/media/video/Kconfig	2014-08-27 00:22:15.411383921 -0600
+@@ -841,6 +841,12 @@
+ 	---help---
+ 	  This is a V4L2 SoC camera driver for the OmniVision OV6650 sensor
+ 
++config SOC_CAMERA_OV5640
++	tristate "ov5640 sensor support"
++	depends on SOC_CAMERA && I2C
++	---help---
++	  This is a V4L2 SoC camera driver for the OmniVision OV5640 sensor
++
+ config SOC_CAMERA_OV772X
+ 	tristate "ov772x camera support"
+ 	depends on SOC_CAMERA && I2C
+Index: kernel/linux-2.6.37-psp04.04.00.01/include/linux/ti81xx.h
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/include/linux/ti81xx.h	2014-08-07 17:16:59.233857976 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/include/linux/ti81xx.h	2014-10-23 15:45:24.760302173 -0600
+@@ -8,6 +8,7 @@
+ 
+ #define TVP7002_INST0 "tvp7002"
+ #define TVP5150_INST0 "tvp5150"
++/*#define OV5640_INST0  "tvp7002"*/
+ #define TVP7002_INST1 "tvp7002"
+ #define TI81XXVIN_NUM_INSTANCES		4
+ 
+Index: kernel/linux-2.6.37-psp04.04.00.01/drivers/media/video/ti81xx/ti81xxvin_main.c
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/drivers/media/video/ti81xx/ti81xxvin_main.c	2014-08-11 10:55:45.347161267 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/drivers/media/video/ti81xx/ti81xxvin_main.c	2014-10-23 15:45:24.756302173 -0600
+@@ -2480,6 +2480,7 @@
+ 	int num_capt;
+ 	struct resource *hdvpss_resource;
+ 
++	printk("## --- Starting ti81xxvin_probe\n");
+ 	ti81xxvin_dev = &pdev->dev;
+ 	err = ti81xxvin_initialize();
+ 	if (err) {
+@@ -2487,16 +2488,22 @@
+ 		/* TODO Deinitialize HDVPSS */
+ 		return err;
+ 	}
++
++	/* get virtual addres of IO device using ioremap, store it to each instance */
++	printk("## --- setting virtual address\n");
+ 	for (i = 0; i < pdev->num_resources; i++) {
+ 		hdvpss_resource = &pdev->resource[i];
+ 		if (hdvpss_resource->flags == IORESOURCE_MEM) {
++			printk("## ioremap start: %lX end %lX \n", hdvpss_resource->start, hdvpss_resource->end - hdvpss_resource->start);
+ 			ti81xxvin_obj.addr[i] = ioremap_nocache(
+ 				hdvpss_resource->start,
+ 				hdvpss_resource->end - hdvpss_resource->start);
+ 		}
+ 	}
++
++	printk("## --- Setting up capture instances\n");
+ 	for (i = 0; i < TI81XXVIN_CAPTURE_MAX_DEVICES; i++) {
+-		/* Get the pointer to the instance object */
++		/* Get the pointer to the instance object, set address of respective input port */
+ 		inst = ti81xxvin_obj.dev[i];
+ 		if (TI81XXVIN_INSTANCE0_VIDEO == i ||
+ 			TI81XXVIN_INSTANCE1_VIDEO == i)

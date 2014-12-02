@@ -1,0 +1,209 @@
+Index: gst-plugins-good-0.10.31/src/sys/v4l2/gstv4l2sink.c
+===================================================================
+--- gst-plugins-good-0.10.31.orig/src/sys/v4l2/gstv4l2sink.c	2014-01-28 09:39:09.645316962 -0600
++++ gst-plugins-good-0.10.31/src/sys/v4l2/gstv4l2sink.c	2014-02-11 10:10:04.327198368 -0600
+@@ -74,10 +74,6 @@
+ #define PROP_DEF_MIN_QUEUED_BUFS    2
+ #define DEFAULT_PROP_DEVICE   "/dev/video1"
+ 
+-#define MIN_ROTATION_ANGLE 0
+-#define MAX_ROTATION_ANGLE 360
+-#define DEFAULT_ROTATION_ANGLE 0
+-
+ enum
+ {
+   PROP_0,
+@@ -92,8 +88,6 @@
+   PROP_CROP_LEFT,
+   PROP_CROP_WIDTH,
+   PROP_CROP_HEIGHT,
+-  PROP_ROTATION,
+-  PROP_FLIP,
+   PROP_USERPOINTER,
+ };
+ 
+@@ -136,34 +130,6 @@
+   return TRUE;
+ }
+ 
+-/*
+- * Flip state
+- */
+-enum
+-{
+-  FLIP_NONE = 0,
+-  FLIP_HORIZONTAL = 1,
+-  FLIP_VERTICAL = 2,
+-};
+-
+-#define GST_TYPE_V4L2_FLIP (gst_v4l2_flip_get_type ())
+-static GType
+-gst_v4l2_flip_get_type (void)
+-{
+-  static GType type = 0;
+-
+-  if (!type) {
+-    static GEnumValue vals[] = {
+-      {FLIP_NONE, "No Flip", "none"},
+-      {FLIP_HORIZONTAL, "Horizontal Flip", "horiz"},
+-      {FLIP_VERTICAL, "Vertical Flip", "vert"},
+-      {0, NULL, NULL},
+-    };
+-    type = g_enum_register_static ("GstV4l2SinkFlip", vals);
+-  }
+-  return type;
+-}
+-
+ static void
+ gst_v4l2sink_interface_init (GstImplementsInterfaceClass * klass)
+ {
+@@ -267,7 +233,6 @@
+ static gboolean gst_v4l2sink_event (GstBaseSink * bsink, GstEvent * event);
+ static GstFlowReturn gst_v4l2sink_show_frame (GstBaseSink * bsink,
+     GstBuffer * buf);
+-static void gst_v4l2sink_sync_rotation (GstV4l2Sink * v4l2sink);
+ 
+ static void
+ gst_v4l2sink_base_init (gpointer g_class)
+@@ -355,17 +320,6 @@
+       g_param_spec_uint ("crop-height", "Crop height",
+           "The height of the video crop; default is equal to negotiated image height",
+           0, 0xffffffff, 0, G_PARAM_READWRITE));
+-
+-  g_object_class_install_property (gobject_class, PROP_ROTATION,
+-      g_param_spec_int ("rotation", "Rotation angle",
+-          "Rotation angle for the image", MIN_ROTATION_ANGLE,
+-          MAX_ROTATION_ANGLE, DEFAULT_ROTATION_ANGLE, G_PARAM_READWRITE));
+-
+-  g_object_class_install_property (gobject_class, PROP_FLIP,
+-      g_param_spec_enum ("flip", "Flip State",
+-          "Flip horizontal/vertical",
+-          GST_TYPE_V4L2_FLIP, FLIP_NONE, G_PARAM_READWRITE));
+-
+   g_object_class_install_property (gobject_class, PROP_USERPOINTER,
+       g_param_spec_boolean("userpointer", "User Pointer",
+           "configures using user pointer for display without memcopy",
+@@ -403,51 +357,11 @@
+   v4l2sink->overlay_fields_set = 0;
+   v4l2sink->crop_fields_set = 0;
+   v4l2sink->state = 0;
+-  v4l2sink->rotation = 0;
+-  v4l2sink->flip = FLIP_NONE;
+   v4l2sink->gst_buf_array = NULL;
+   v4l2sink->enableUserPtr = TRUE;
+ }
+ 
+ static void
+-gst_v4l2sink_sync_flip (GstV4l2Sink * v4l2sink)
+-{
+-  if (GST_V4L2_IS_OPEN (v4l2sink->v4l2object)) {
+-    struct v4l2_control control;
+-    gint fd = v4l2sink->v4l2object->video_fd;
+-
+-    memset (&control, 0x00, sizeof (struct v4l2_control));
+-
+-    switch (v4l2sink->flip) {
+-      case FLIP_VERTICAL:
+-        v4l2sink->rotation = 0;
+-        control.value = 1;
+-        break;
+-      case FLIP_HORIZONTAL:
+-        /* Horizontal Flip = Vertical Flip + 180 rotation */
+-        v4l2sink->rotation = 180;
+-        control.value = 1;
+-        break;
+-      case FLIP_NONE:
+-        /* In the below switch case logic we need to handle FLIP_NONE
+-         * case since the v4l2 driver holds on to the last configured
+-         * flip value even after the device file is closed.
+-         */
+-        control.value = 0;
+-        break;
+-      default:
+-        GST_WARNING_OBJECT (v4l2sink, "Invalid flip property");
+-        control.value = 0;
+-        break;
+-    }
+-
+-    gst_v4l2sink_sync_rotation (v4l2sink);
+-    control.id = V4L2_CID_VFLIP;
+-    g_return_if_fail (v4l2_ioctl (fd, VIDIOC_S_CTRL, &control) >= 0);
+-  }
+-}
+-
+-static void
+ gst_v4l2sink_dispose (GObject * object)
+ {
+   GstV4l2Sink *v4l2sink = GST_V4L2SINK (object);
+@@ -584,21 +498,6 @@
+ }
+ 
+ static void
+-gst_v4l2sink_sync_rotation (GstV4l2Sink * v4l2sink)
+-{
+-  if (GST_V4L2_IS_OPEN (v4l2sink->v4l2object)) {
+-    struct v4l2_control control;
+-    gint fd = v4l2sink->v4l2object->video_fd;
+-
+-    memset (&control, 0x00, sizeof (struct v4l2_control));
+-    control.id = V4L2_CID_ROTATE;
+-    control.value = v4l2sink->rotation;
+-    g_return_if_fail (v4l2_ioctl (fd, VIDIOC_S_CTRL, &control) >= 0);
+-  }
+-}
+-
+-
+-static void
+ gst_v4l2sink_set_property (GObject * object,
+     guint prop_id, const GValue * value, GParamSpec * pspec)
+ {
+@@ -653,14 +552,6 @@
+         v4l2sink->crop_fields_set |= RECT_HEIGHT_SET;
+         gst_v4l2sink_sync_crop_fields (v4l2sink);
+         break;
+-      case PROP_ROTATION:
+-        v4l2sink->rotation = g_value_get_int (value);
+-        gst_v4l2sink_sync_rotation (v4l2sink);
+-        break;
+-      case PROP_FLIP:
+-        v4l2sink->flip = g_value_get_enum (value);
+-        gst_v4l2sink_sync_flip (v4l2sink);
+-        break;
+       case PROP_USERPOINTER:
+         v4l2sink->enableUserPtr = g_value_get_boolean (value);
+         break;
+@@ -711,12 +602,6 @@
+       case PROP_CROP_HEIGHT:
+         g_value_set_uint (value, v4l2sink->crop.height);
+         break;
+-      case PROP_ROTATION:
+-        g_value_set_int (value, v4l2sink->rotation);
+-        break;
+-      case PROP_FLIP:
+-        g_value_set_enum (value, v4l2sink->flip);
+-        break;
+       case PROP_USERPOINTER:
+        g_value_set_boolean (value, v4l2sink->enableUserPtr);
+         break;
+@@ -743,8 +628,6 @@
+       /* open the device */
+       if (!gst_v4l2_object_start (v4l2sink->v4l2object))
+         return GST_STATE_CHANGE_FAILURE;
+-      gst_v4l2sink_sync_rotation (v4l2sink);
+-      gst_v4l2sink_sync_flip (v4l2sink);
+       break;
+     case GST_STATE_CHANGE_PLAYING_TO_PAUSED:
+       break;
+Index: gst-plugins-good-0.10.31/src/sys/v4l2/gstv4l2sink.h
+===================================================================
+--- gst-plugins-good-0.10.31.orig/src/sys/v4l2/gstv4l2sink.h	2014-01-28 09:39:09.625316963 -0600
++++ gst-plugins-good-0.10.31/src/sys/v4l2/gstv4l2sink.h	2014-02-11 10:10:04.339198368 -0600
+@@ -76,8 +76,6 @@
+   guint8 overlay_fields_set, crop_fields_set;
+ 
+   guint8 state;
+-  gint rotation;
+-  gint flip;
+   GstBuffer **gst_buf_array;
+   gint queued_buff_count;
+   gboolean enableUserPtr;

@@ -1,0 +1,5 @@
+AVAHI=$(DEVDIR)/fs/apps/avahi-0.6.19
+AVAHI_INCLUDE=$(AVAHI)/Output/include
+AVAHI_LIB=$(AVAHI)/Output/lib
+AVAHI_BIN=$(AVAHI)/Output/bin
+AVAHI_SBIN=$(AVAHI)/Output/sbin

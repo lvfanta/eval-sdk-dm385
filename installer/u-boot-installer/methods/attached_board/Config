@@ -1,0 +1,79 @@
+if INSTALLER_MODE_ATTACHED_BOARD || INSTALLER_MODE_SD_CARD_INSTALLER || INSTALLER_MODE_TFTP_KERNEL
+comment "Installer to U-boot communication options"
+
+choice
+    prompt "Communication method with the target board"
+    depends on INSTALLER_MODE_ATTACHED_BOARD || INSTALLER_MODE_SD_CARD_INSTALLER
+
+config INSTALLER_SERIAL_COM
+	bool "Serial port"
+	
+config INSTALLER_TELNET_COM
+	bool "Telnet-serial adaptor"
+
+endchoice
+
+config INSTALLER_TELNET_COM_IP
+	string "IP address of telnet-serial adaptor"
+	depends on INSTALLER_TELNET_COM
+
+config INSTALLER_TELNET_COM_PORT
+	string "Network port of telnet-serial adaptor"
+	depends on INSTALLER_TELNET_COM
+	
+config INSTALLER_SERIAL_COM_PORT
+	string "Serial port for target communication"
+	default "/dev/ttyS0"
+	depends on INSTALLER_SERIAL_COM
+
+if !INSTALLER_MODE_SD_CARD_INSTALLER
+comment "Transfer options for installation"
+depends on INSTALLER_MODE_ATTACHED_BOARD
+choice 
+    prompt "Protocol for transfering images to the target"
+
+config INSTALLER_TFTP_METHOD
+	bool "TFTP"
+	depends on UBOOT_NETWORKING
+
+config INSTALLER_DFU_METHOD
+	bool "USB DFU"
+	depends on UBOOT_USBD
+
+config INSTALLER_SERIAL_METHOD
+	bool "Serial"
+
+endchoice
+
+config INSTALLER_TFTP_SERVER_DIRECTORY
+	string "TFTP server path"
+	depends on INSTALLER_TFTP_METHOD || INSTALLER_MODE_TFTP_KERNEL
+	default "/srv/tftp"
+
+if INSTALLER_TFTP_METHOD || INSTALLER_MODE_TFTP_KERNEL
+comment "Network options for installation"
+
+choice 
+        prompt "U-boot IP address"
+
+config INSTALLER_DHCP
+	bool "DHCP"
+
+config INSTALLER_STATIC_IP
+	bool "Static IP address"
+		
+endchoice
+
+config INSTALLER_IPADDR 
+	string "Static IP"
+	default "192.168.1.2"
+	depends on INSTALLER_STATIC_IP
+	 
+config INSTALLER_MSKADDR
+	string "Static mask"
+	default "255.255.255.0"
+	depends on INSTALLER_STATIC_IP
+endif
+endif # !INSTALLER_MODE_SD_CARD_INSTALLER
+
+endif #INSTALLER_MODE_ATTACHED_BOARD || INSTALLER_MODE_SD_CARD_INSTALLER

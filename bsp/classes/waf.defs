@@ -1,0 +1,107 @@
+# This script simplifies the process of cross-compiling
+# waf based applications with the SDK
+
+#! \defgroup waf_class WAF Class
+#! \ingroup classes
+#! \section intro Introduction
+#! The waf class provides logic for (cross)compiling waf applications
+#!
+#! \section public_params Public Parameters
+#! The following is a list of parameters that may be set according to an application's specific requirements.
+#! <ul>
+#! <li>
+#! <b>WAF_CONFIGURE_OPTIONS</b>: Extra values passed to waf during configuration.
+#!
+#! <li>
+#! <b>WAF_SRC_DIR</b>: The directory which contains the package's. Set to the "src" directory by default, so there's no need to modify this variable unless another directory name is required.
+#!
+#! By default the system installs all the executable data directly to
+#! FSROOT, and all the development files (header, man, info) into
+#! FSDEVROOT
+#!
+#! \section private_params Private Parameters
+#! The following is a list of private parameters that are recommended not to be modified.
+#! <ul>
+#!
+#! <li>
+#! <b>DESTDIR</b>: The autotools DESTDIR parameter is passed into the package's makefile when the package is installed.  Often DESTDIR is set to $(FSDEVROOT) in the Makefile that includes the autotools.class.
+#!
+
+# WAF_CONFIGURE_OPTIONS: extra values passed to autotools:
+# may include --xxx-yyy definitions or ac_something definitions
+# WAF_SRC_DIR: the directory with the waf binary
+
+# By default the system installs all the executable data directly to
+# $(FSROOT), and all the development files (header, man, info) into
+# $(FSDEVROOT)
+
+.PHONY: clean_configure waf_configure waf_clean waf_build waf_uninstall 
+
+include $(CLASSES)/flags.defs
+include $(CLASSES)/force_build.defs
+
+WAF_BUILD_DIR?=$(ARCH)
+WAF_SRC_DIR?=src
+
+# waf commands
+WAF_CONFIGURE_CMD=./waf configure
+WAF_BUILD_CMD=./waf build
+WAF_CLEAN_CMD=./waf clean
+WAF_DISTCLEAN_CMD=./waf distclean
+WAF_INSTALL_CMD=./waf install
+
+
+waf_build: $(FETCHED_FLAG) $(PATCHED_FLAG) waf_configure $(BUILT_FLAG)$(ARCH_SUFFIX) waf_install 
+
+
+$(BUILT_FLAG)$(ARCH_SUFFIX):
+	$(V)if [ -d $(WAF_SRC_DIR) ] ; then \
+		cd $(WAF_SRC_DIR); \
+		if [ -f waf ] ; then \
+			$(WAF_BUILD_CMD) -j $(BSP_NCPU) $(if $(VERBOSE:1=),,-v) $(QOUT) $(ERRQOUT); \
+		fi; \
+		cd - $(QOUT) $(ERRQOUT); \
+	fi; 
+	$(V) touch $(BUILT_FLAG)$(ARCH_SUFFIX)
+
+waf_clean: clean_configure unpatch
+	$(V) rm -Rf $(BUILT_FLAG)* $(INSTALLED_FLAG)* $(CONFIGURED_FLAG)*
+
+waf_install:
+	$(V)if [ -d $(WAF_SRC_DIR) ] ; then \
+		cd $(WAF_SRC_DIR); \
+		if [ -f waf ] ; then \
+			$(WAF_INSTALL_CMD) -j $(BSP_NCPU) $(if $(VERBOSE:1=),,-v) $(QOUT) $(ERRQOUT); \
+		fi; \
+		cd - $(QOUT) $(ERRQOUT); \
+	fi; 
+
+install_flag: $(INSTALLED_FLAG)$(ARCH_SUFFIX)
+
+$(INSTALLED_FLAG)$(ARCH_SUFFIX):
+	$(V) touch $(INSTALLED_FLAG)$(ARCH_SUFFIX)
+
+FETCHER_EXTRACT_DIRECTORY_NAME=src
+include $(CLASSES)/fetcher.defs
+
+$(CONFIGURED_FLAG)$(ARCH_SUFFIX):
+	$(V)if [ -d $(WAF_SRC_DIR) ] ; then \
+			cd $(WAF_SRC_DIR); \
+			if [ -f waf ] ; then \
+				$(EXPORT_TOOLCHAIN_ENVIRONMENT) CXXFLAGS="$(APPS_CXXFLAGS)" CFLAGS="$(APPS_CFLAGS) -I$(KERNEL_INCLUDE)" LINKFLAGS="$(APPS_LDFLAGS)" \
+				$(WAF_CONFIGURE_CMD) $(WAF_CONFIGURE_OPTIONS) $(if $(VERBOSE:1=),,-v) $(QOUT) $(ERRQOUT); \
+			fi; \
+			cd - $(QOUT) $(ERRQOUT); \
+		fi;
+	$(V)touch $(CONFIGURED_FLAG)$(ARCH_SUFFIX) $(QOUT)
+	
+waf_configure: $(CONFIGURED_FLAG)$(ARCH_SUFFIX)
+
+clean_configure:
+	$(V)if [ -d $(WAF_SRC_DIR) ] ; then \
+		cd $(WAF_SRC_DIR); \
+		if [ -f waf ] ; then \
+			$(WAF_CLEAN_CMD) $(if $(VERBOSE:1=),,-v) $(QOUT) $(ERRQOUT);  \
+		fi; \
+		cd - $(QOUT) $(ERRQOUT); \
+	fi; 

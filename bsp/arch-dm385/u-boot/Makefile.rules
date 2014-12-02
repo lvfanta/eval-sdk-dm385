@@ -1,0 +1,49 @@
+#$L$
+# Copyright (C) 2011 Ridgerun (http://www.ridgerun.com). 
+#$L$
+
+ifeq ($(DEVDIR),)
+$(error ====== DEVDIR variable is empty, invoke this Makefile from the BSP root, or provide the path to it =====)
+endif
+include $(DEVDIR)/bsp/mach/Make.conf
+
+.PHONY: arch_clean gen_ipl
+
+soft_clean:
+	if [ -d src ] ; then \
+	$(MAKE) -C src CROSS_COMPILE=$(TOOLCHAIN_PREFIX)- distclean ; \
+	fi ; 
+	rm -f $(CONFIGURED_FLAG) $(BUILT_FLAG) reflags reflags.tmp .fsloadhex
+
+gen_ipl: 
+	$(MAKE) $(BOOTLOADER) 
+	$(MAKE) soft_clean 
+	$(MAKE) $(PATCHED_FLAG)
+	$(MAKE) relflags 
+	$(MAKE) ipl_built
+	touch $@
+
+ipl_built: ipl_configured real_build
+	cp src/u-boot.min* $(IMAGES)
+ifeq ($(CONFIG_UBOOT_NAND_FLASH_MEMORY),y)
+	$(V) ln -sf $(IMAGES)/bootloader $(IMAGES)/bootloader.nandbin
+endif
+ifeq ($(CONFIG_UBOOT_SPI_FLASH_MEMORY),y)
+	$(V) ln -sf $(IMAGES)/bootloader $(IMAGES)/bootloader.spibin
+endif
+
+gen_uboot_flashbin:
+ifeq ($(CONFIG_UBOOT_NAND_FLASH_MEMORY),y)
+	$(V) ln -sf $(IMAGES)/bootloader $(IMAGES)/bootloader.nandbin
+endif
+	touch $@
+
+arch_build:
+	$(MAKE) gen_ipl
+	$(MAKE) soft_clean
+
+
+arch_clean:
+	$(V) rm -rf gen_ipl arch_build gen_uboot_flashbin
+
+arch_post_build:

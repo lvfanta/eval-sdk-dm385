@@ -1,0 +1,5 @@
+config FS_APPS_E2FSPROGS
+	bool "e2fsprogs"
+	help
+	Filesystem utilities to use with the ext2, ext3, and ext4 filesystems.
+	

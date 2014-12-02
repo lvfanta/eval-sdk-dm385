@@ -1,0 +1,165 @@
+2008-09-10  Stefan Kost  <ensonic@users.sf.net>
+
+	* autogen.sh:
+	  better autogen.sh script.
+
+2008-09-10  Stefan Kost  <ensonic@users.sf.net>
+
+	* src/gsttl.in:
+	  Fix the libname in wrapper.
+
+2008-09-10  Stefan Kost  <ensonic@users.sf.net>
+
+	* autogen.sh:
+	  Don't used version tools. We use what the suer has configured via
+	  /etc/alternatives.
+	  
+	* README:
+	* configure.ac:
+	* debian/changelog:
+	* debian/gstreamer0.10-tracelib.install:
+	* src/Makefile.am:
+	* src/gsttl.in:
+	  Add wrapper for execution that ld-preloads. Install the preload lib
+	  into a subdir under lib to make lintian happy.
+
+2008-08-21  Stefan Kost  <ensonic@users.sf.net>
+
+	* debian/gstreamer0.10-tracelib.install:
+	* debian/lintian-override:
+	* debian/rules:
+	  Now succefully override warnings that do not make sense.
+
+2008-08-20  Stefan Kost  <ensonic@users.sf.net>
+
+	* README:
+	* debian/control:
+	* debian/copyright:
+	* debian/gstreamer0.10-tracelib.install:
+	* debian/lintian-override:
+	* debian/rules:
+	* src/Makefile.am:
+	* src/gstpl_plot.sh:
+	* src/gstpl_splitlog.py:
+	* src/gstpreload.c:
+	* src/gsttl_plot.sh:
+	* src/gsttl_splitlog.py:
+	* src/gsttracelib.c:
+	  More renaming and changes to please Mr. Lintian to no avail. I am
+	  officialy giving up.
+
+2008-08-20  Stefan Kost  <ensonic@users.sf.net>
+
+	* README:
+	* debian/control:
+	* debian/gstreamer0.10-tracelib.install:
+	* src/Makefile.am:
+	* src/gstpl_plot.sh:
+	* src/gstpl_splitlog.py:
+	* src/gstpreload.c:
+	* src/gsttl_plot.sh:
+	* src/gsttl_splitlog.py:
+	* src/gsttracelib.c:
+	  More renaming for lintu^Hian.
+
+2008-08-20  Stefan Kost  <ensonic@users.sf.net>
+
+	* README:
+	* debian/gstreamer0.10-tracelib.install:
+	* debian/changelog:
+	* src/Makefile.am:
+	* src/plot.sh:
+	* src/splitlog.py:
+	* src/gstpl_plot.sh:
+	* src/gstpl_splitlog.py:
+	  Use a name prefix for tools (they are installed to /usr). Install
+	  library without version.
+
+2008-08-19  Stefan Kost  <ensonic@users.sf.net>
+
+	* src/gstpreload.c:
+	  Fix build errors.
+
+2008-04-23  Stefan Kost  <ensonic@users.sf.net>
+
+	* README:
+	* src/gstpreload.c:
+	  Hide broken per element cpu usage for now. Show first activity for
+	  each element. Works better with playbin(2) now.
+
+2008-04-03  Stefan Kost  <ensonic@users.sf.net>
+
+	* src/gstpreload.c:
+	  Try per element cpu usage. Of course gives stupid results :/
+
+2008-04-02  Stefan Kost  <ensonic@users.sf.net>
+
+	* README:
+	* TODO:
+	* src/gstpreload.c:
+	  More statistics. Elements and Pads are sorted in stream order.
+
+2008-04-01  Stefan Kost  <ensonic@users.sf.net>
+
+	* Makefile.am:
+	* TODO:
+	* src/gstpreload.c:
+	  Moved TODO from source into extra file.
+
+2008-03-31  Stefan Kost  <ensonic@users.sf.net>
+
+	* src/gstpreload.c:
+	  Slightly better per-thread cpu-load.
+
+2008-03-20  Stefan Kost  <ensonic@users.sf.net>
+
+	* src/gstpreload.c:
+	  Cleanup FIXME's and TODO's.
+
+2008-03-20  Stefan Kost  <ensonic@users.sf.net>
+
+	* src/gstpreload.c:
+	  Fix proxypad handling.
+
+2008-03-19  Stefan Kost  <ensonic@users.sf.net>
+
+	* src/gstpreload.c:
+	  Gather some element stats and print. Still some issues with ghost &
+	  proxy pads.
+
+2008-03-19  Stefan Kost  <ensonic@users.sf.net>
+
+	* AUTHORS:
+	* README:
+	* src/gstpreload.c:
+	  New envvar to suppress logging. First attempt to get per thread cpu
+	  stats. Cleanups in the README.
+
+2008-03-17  Stefan Kost  <ensonic@users.sf.net>
+
+	* src/gstpreload.c:
+	  Added pad stats.
+
+	* src/plot.sh:
+	  Improved logging (filter titles in legend).
+
+2008-03-17  Stefan Kost  <ensonic@users.sf.net>
+
+	* README:
+	* src/gstpreload.c:
+	* src/plot.sh:
+	  Fixing the plot script. Tweaking cpuload meassurements.
+
+2008-03-17  Stefan Kost  <ensonic@users.sf.net>
+
+	* AUTHORS:
+	* Makefile.am:
+	* NEWS:
+	* README:
+	* configure.ac:
+	* src/Makefile.am:
+	* src/gstpreload.c:
+	* src/plot.sh:
+	* src/splitlog.py:
+	  Initial commit of gstreamer meassurment preload library.
+

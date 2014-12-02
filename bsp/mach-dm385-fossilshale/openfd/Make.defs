@@ -1,0 +1,5 @@
+#$L$
+# Copyright (C) 2014 Ridgerun (http://www.ridgerun.com). 
+#$L$
+
+INSTALLER_BOARD=dm814x

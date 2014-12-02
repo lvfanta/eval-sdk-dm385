@@ -1,0 +1,31 @@
+config FS_APPS_LIBGD
+	bool "libgd-2.1.0"
+	select FS_APPS_LIBPNG
+	select FS_APPS_ZLIB
+	select VT
+	default n
+	help
+	  GD is an open source code library for the dynamic creation of
+	  images by programmers.
+	  
+	  Important: If you wish to use PHP and GD, it is recommended to use
+	  the bundled GD lib that comes with PHP. Note from the PHP website:
+	  Since PHP 4.3 there is a bundled version of the GD lib. This bundled
+	  version has some additional features like alpha blending, and should
+	  be used in preference to the external library since its codebase is
+	  better maintained and more stable. See FS_APPS_PHP_GD.
+
+if FS_APPS_LIBGD
+comment "GD Options"
+
+config FS_APPS_LIBGD_JPEG
+	bool "Support for JPEG"
+        select FS_APPS_JPEG
+        depends on FS_APPS_LIBGD
+
+config FS_APPS_LIBGD_FREETYPE
+	bool "Support for FreeType"
+	select FS_APPS_FREETYPE
+	depends on FS_APPS_LIBGD
+	
+endif

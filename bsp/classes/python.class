@@ -1,0 +1,17 @@
+include $(CLASSES)/python.defs
+
+.PHONY: patched build clean install uninstall distclean
+
+build: $(FETCHED_FLAG) $(PATCHED_FLAG)
+
+clean: python_clean
+
+patched: $(PATCHED_FLAG)
+
+install: python_install
+
+uninstall: python_uninstall
+
+distclean: clean unpatch $(FETCHED_FLAG)_clean
+
+include $(CLASSES)/fetcher.defs

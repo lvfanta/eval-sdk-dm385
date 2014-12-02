@@ -1,0 +1,68 @@
+= TODO =
+== logging ==
+- cache more stuff (ghostpad resolving, right now it differes a bit for
+  transmission and element stats)
+
+
+== wrap more methods ==
+- gst_pad_query (we have gst_element_query)
+
+
+== more statistics ==
+- gst_pad_{set,get}_caps? or just check caps when buffers are processed
+  - detailed checks
+    - track caps changes per elements
+    - check if they are real changes (new pointer and different content)
+- gst_element_post_message
+  - we could handle state-changes specifically
+    - have time on the x axis
+    - have states on the y axis
+    - one plot per element
+- count total unique buffers, events, messages and queries
+  - right now we counts buffer and event transfers (per pad/element)
+  - just using a hashmap is not enough, as the memory can be reused
+  - events now have a seqence number
+
+
+== graphs ==
+- condense the multiplot
+  - we should plot all pad-graphs of one element in one plot
+    - pad-logs are named pad_<element-name>_<pad_name>.log
+    - we could ev. group by element-name
+      - right now its ambigous is there are '_' in pad or element names
+  - also helps overlaying events and messages
+- plot stream-time (we could plot buffer timestamps on pads)
+  - normally just a rising line
+  - should show seeking
+- use java sequence tool to draw message, query, event graph?
+
+
+== log pre processing ==
+- splitlog would ideally add a order number to the log so that we have a sorted
+  multiplot, like instead of pad_mydecoder_src.log and pad_mydecoder_sink.log
+  we would have pad_05_mydecoder_src.log and pad_05_mydecoder_sink.log
+  - then we can plot all pad_XX_*.log in one graph and also plot then in right
+    order (sources at the top)
+- if we can log the preffered order at gst_preload_done, then we can maybe also
+  reorder in gsttl_plot.sh
+- convert timestamps to a double (e.g. sec:ms)
+
+
+== sanity checks ==
+- enable/disable per env-var
+- caps changes (see above "wrap more methods")
+  GSTTL_CHK_CAPS
+  1) keep last caps and compare with caps on next buffer
+  2) gst_caps_is_equal(GST_PAD_CAPS(pad),GST_BUFFER_CAPS(buffer))
+- continous timestamps (except DISCONT) - like identity checks
+  GSTTL_CHK_TIMESTAMPS
+- track buffers
+  - can we identify elements that don't use pad-alloc but should?
+  - can we identify elements that could use sub-buffers?
+
+
+== random ideas ==
+* queue fill levels
+* latencies
+* more rusage fields
+

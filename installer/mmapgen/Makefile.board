@@ -1,0 +1,13 @@
+#$L$
+# Copyright (C) 2014 Ridgerun (http://www.ridgerun.com). 
+#$L$
+
+ifeq ($(CONFIG_BSP_ARCH_DM368),y)
+MMAPGEN_BOARD=dm36x
+else ifeq ($(CONFIG_BSP_ARCH_DM8168),y)
+MMAPGEN_BOARD=dm816x
+else ifeq ($(CONFIG_BSP_ARCH_DM8148),y)
+MMAPGEN_BOARD=dm814x
+else ifeq ($(CONFIG_BSP_ARCH_DM385),y)
+MMAPGEN_BOARD=dm814x
+endif

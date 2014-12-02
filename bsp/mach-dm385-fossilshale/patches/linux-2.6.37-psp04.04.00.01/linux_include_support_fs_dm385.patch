@@ -1,0 +1,189 @@
+Index: kernel/linux-2.6.37-psp04.04.00.01/include/linux/cpsw.h
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/include/linux/cpsw.h	2012-08-30 05:48:03.000000000 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/include/linux/cpsw.h	2014-08-06 14:50:52.549714941 -0600
+@@ -16,6 +16,7 @@
+ 	u32	ss_reg_ofs;	/* Subsystem control register offset */
+ 	int	channels;	/* number of cpdma channels (symmetric) */
+ 	u32	cpdma_reg_ofs;	/* cpdma register offset */
++	u32     cpdma_sram_ofs; /* cpdma sram offset */
+ 
+ 	int	slaves;		/* number of slave cpgmac ports */
+ 	struct cpsw_slave_data	*slave_data;
+@@ -46,6 +47,7 @@
+ 	u32	host_port_num; /* The port number for the host port */
+ 
+ 	bool	no_bd_ram; /* no embedded BD ram*/
++	u32	default_vlan;
+ };
+ 
+ #endif /* __CPSW_H__ */
+Index: kernel/linux-2.6.37-psp04.04.00.01/include/linux/libata.h
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/include/linux/libata.h	2012-08-30 05:48:03.000000000 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/include/linux/libata.h	2013-12-02 05:08:47.000000000 -0600
+@@ -203,6 +203,7 @@
+ 					      * management */
+ 	ATA_FLAG_SW_ACTIVITY	= (1 << 22), /* driver supports sw activity
+ 					      * led */
++	ATA_FLAG_NO_DIPM	= (1 << 23), /* host not happy with DIPM */
+ 
+ 	/* bits 24:31 of ap->flags are reserved for LLD specific flags */
+ 
+Index: kernel/linux-2.6.37-psp04.04.00.01/include/linux/lis3lv02d.h
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/include/linux/lis3lv02d.h	2012-08-30 05:48:03.000000000 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/include/linux/lis3lv02d.h	2013-12-02 05:08:47.000000000 -0600
+@@ -113,6 +113,7 @@
+ 	s8 axis_x;
+ 	s8 axis_y;
+ 	s8 axis_z;
++	s8 g_range;
+ #define LIS3_USE_REGULATOR_CTRL 0x01
+ #define LIS3_USE_BLOCK_READ	0x02
+ 	u16 driver_features;
+Index: kernel/linux-2.6.37-psp04.04.00.01/include/linux/mmc/card.h
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/include/linux/mmc/card.h	2012-08-30 05:48:03.000000000 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/include/linux/mmc/card.h	2013-12-02 05:08:47.000000000 -0600
+@@ -115,6 +115,7 @@
+ #define MMC_STATE_HIGHSPEED	(1<<2)		/* card is in high speed mode */
+ #define MMC_STATE_BLOCKADDR	(1<<3)		/* card uses block-addressing */
+ #define MMC_STATE_HIGHSPEED_DDR (1<<4)		/* card is in high speed mode */
++#define MMC_CARD_REMOVED	(1<<7)		/* card has been removed */
+ 	unsigned int		quirks; 	/* card quirks */
+ #define MMC_QUIRK_LENIENT_FN0	(1<<0)		/* allow SDIO FN0 writes outside of the VS CCCR range */
+ #define MMC_QUIRK_BLKSZ_FOR_BYTE_MODE (1<<1)	/* use func->cur_blksize */
+@@ -157,12 +158,14 @@
+ #define mmc_card_highspeed(c)	((c)->state & MMC_STATE_HIGHSPEED)
+ #define mmc_card_blockaddr(c)	((c)->state & MMC_STATE_BLOCKADDR)
+ #define mmc_card_ddr_mode(c)	((c)->state & MMC_STATE_HIGHSPEED_DDR)
++#define mmc_card_removed(c)	((c) && ((c)->state & MMC_CARD_REMOVED))
+ 
+ #define mmc_card_set_present(c)	((c)->state |= MMC_STATE_PRESENT)
+ #define mmc_card_set_readonly(c) ((c)->state |= MMC_STATE_READONLY)
+ #define mmc_card_set_highspeed(c) ((c)->state |= MMC_STATE_HIGHSPEED)
+ #define mmc_card_set_blockaddr(c) ((c)->state |= MMC_STATE_BLOCKADDR)
+ #define mmc_card_set_ddr_mode(c) ((c)->state |= MMC_STATE_HIGHSPEED_DDR)
++#define mmc_card_set_removed(c) ((c)->state |= MMC_CARD_REMOVED)
+ 
+ static inline int mmc_card_lenient_fn0(const struct mmc_card *c)
+ {
+Index: kernel/linux-2.6.37-psp04.04.00.01/include/linux/mmc/core.h
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/include/linux/mmc/core.h	2012-08-30 05:48:03.000000000 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/include/linux/mmc/core.h	2013-12-02 05:08:47.000000000 -0600
+@@ -117,6 +117,7 @@
+ 
+ 	unsigned int		sg_len;		/* size of scatter list */
+ 	struct scatterlist	*sg;		/* I/O scatter list */
++	s32		host_cookie;	/* host private data */
+ };
+ 
+ struct mmc_request {
+@@ -124,12 +125,16 @@
+ 	struct mmc_data		*data;
+ 	struct mmc_command	*stop;
+ 
+-	void			*done_data;	/* completion data */
++	struct completion	completion;
+ 	void			(*done)(struct mmc_request *);/* completion function */
+ };
+ 
+ struct mmc_host;
+ struct mmc_card;
++struct mmc_async_req;
++
++extern struct mmc_async_req *mmc_start_req(struct mmc_host *,
++		struct mmc_async_req *, int *);
+ 
+ extern void mmc_wait_for_req(struct mmc_host *, struct mmc_request *);
+ extern int mmc_wait_for_cmd(struct mmc_host *, struct mmc_command *, int);
+@@ -162,6 +167,8 @@
+ extern void mmc_release_host(struct mmc_host *host);
+ extern int mmc_try_claim_host(struct mmc_host *host);
+ 
++extern int mmc_detect_card_removed(struct mmc_host *host);
++
+ /**
+  *	mmc_claim_host - exclusively claim a host
+  *	@host: mmc host to claim
+Index: kernel/linux-2.6.37-psp04.04.00.01/include/linux/mtd/nand.h
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/include/linux/mtd/nand.h	2012-08-30 05:48:03.000000000 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/include/linux/mtd/nand.h	2013-12-02 05:08:47.000000000 -0600
+@@ -233,6 +233,13 @@
+ /* Chip may not exist, so silence any errors in scan */
+ #define NAND_SCAN_SILENT_NODEV	0x00080000
+ /*
++ * Autodetect nand buswidth with readid/onfi.
++ * This suppose the driver will configure the hardware in 8 bits mode
++ * when calling nand_scan_ident, and update its configuration
++ * before calling nand_scan_tail.
++ */
++#define NAND_BUSWIDTH_AUTO      0x00080000
++/*
+  * If passed additionally to NAND_USE_FLASH_BBT then BBT code will not touch
+  * the OOB area.
+  */
+Index: kernel/linux-2.6.37-psp04.04.00.01/include/linux/serial_reg.h
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/include/linux/serial_reg.h	2012-08-30 05:48:03.000000000 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/include/linux/serial_reg.h	2013-12-02 05:08:47.000000000 -0600
+@@ -165,6 +165,11 @@
+ #define UART_XON2	5	/* I/O: Xon character 2 */
+ #define UART_XOFF1	6	/* I/O: Xoff character 1 */
+ #define UART_XOFF2	7	/* I/O: Xoff character 2 */
++#define UART_OMAP_TCR   6	/* Transmission Control register*/
++#define UART_TLR        7	/* Trigger Level Register*/
++#define UART_TXFLL	10	/* Transmit Frame Length Lor*/
++#define UART_TXFLH	11	/* Transmit Frmae Length High*/
++#define UART1_OMAP_SCR  16	/* Supplementary Control register*/
+ 
+ /*
+  * EFR[4]=1 MCR[6]=1, TI16C752
+@@ -340,6 +345,7 @@
+ #define UART_OMAP_MDR1		0x08	/* Mode definition register */
+ #define UART_OMAP_MDR2		0x09	/* Mode definition register 2 */
+ #define UART_OMAP_SCR		0x10	/* Supplementary control register */
++#define UART_OMAP_ACREG		0xf	/* Auxilarry Control Register */
+ #define UART_OMAP_SSR		0x11	/* Supplementary status register */
+ #define UART_OMAP_EBLR		0x12	/* BOF length register */
+ #define UART_OMAP_OSC_12M_SEL	0x13	/* OMAP1510 12MHz osc select */
+@@ -348,6 +354,8 @@
+ #define UART_OMAP_SYSS		0x16	/* System status register */
+ #define UART_OMAP_WER		0x17	/* Wake-up enable register */
+ 
++#define UART_OMAP_CFPS		0x18	/* Carrier Freq prescalar register */
++#define UART_OMAP_MDR3		0x20	/* Mode control register 3 */
+ /*
+  * These are the definitions for the MDR1 register
+  */
+Index: kernel/linux-2.6.37-psp04.04.00.01/include/linux/sockios.h
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/include/linux/sockios.h	2012-08-30 05:48:03.000000000 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/include/linux/sockios.h	2013-12-02 05:08:47.000000000 -0600
+@@ -125,6 +125,9 @@
+ /* hardware time stamping: parameters in linux/net_tstamp.h */
+ #define SIOCSHWTSTAMP   0x89b0
+ 
++/* Switch config calls: parameters in linux/net_switch_config.h */
++#define SIOCSWITCHCONFIG    0x89c0
++
+ /* Device private ioctl calls */
+ 
+ /*
+Index: kernel/linux-2.6.37-psp04.04.00.01/include/linux/ti81xx.h
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/include/linux/ti81xx.h	2012-08-30 05:48:03.000000000 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/include/linux/ti81xx.h	2014-08-06 10:37:18.466409640 -0600
+@@ -56,6 +56,9 @@
+ 	 */
+ 	int decoder_id;
+ 	/* ID of the decoder to be passed to select this decoder */
++	int i2c_adapter_id;
++	/* I2C adapter on which the subdevice needs to be connected */
++	int force_sd_video;
+ };
+ 
+ 

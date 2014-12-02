@@ -1,0 +1,55 @@
+#!/bin/sh -e
+FILE="/proc/cmdline"
+case "$1" in
+start)
+    echo "Read/Write partition Config"
+if [ -e /etc/firstboot ] ; then
+
+if grep -q ubifs "$FILE"; then
+    ubiformat /dev/mtd4
+    ubiattach -p /dev/mtd4
+    ubimkvol /dev/ubi1 -N USER_DATA -m
+    mount -t ubifs ubi1:USER_DATA /mnt
+    #Temporal rw remount, just for flags and old files.
+    mount -o remount,rw /
+    cp -rf /rw-partition/* /mnt
+    rm -rf /rw-partition
+    rm /etc/firstboot
+    sync
+    /bin/mount -o remount,noatime,nodiratime,ro /dev/root /
+    sync
+else if grep -q jffs2 "$FILE"; then
+    flash_erase /dev/mtd4 0 0
+    mount -t jffs2 /dev/mtdblock4 /mnt
+    mount -o remount,rw /
+    cp -rf /rw-partition/* /mnt
+    rm -rf /rw-partition
+    rm /etc/firstboot
+    sync
+    /bin/mount -o remount,noatime,nodiratime,ro /dev/root /
+    sync
+fi
+fi
+
+else
+if grep -q ubifs "$FILE"; then
+    ubiattach -p /dev/mtd4
+    mount -t ubifs ubi1:USER_DATA /mnt
+else if grep -q jffs2 "$FILE"; then
+    mount -t jffs2 /dev/mtdblock4 /mnt/overlay
+fi
+fi
+fi
+    ;;
+stop)
+    echo "Read/Write partition Stop"
+    ;;
+
+*)
+    echo "Usage: /etc/init.d/read-write-partition.init {start|stop}"
+    exit 1
+    ;;
+esac
+
+exit 0
+

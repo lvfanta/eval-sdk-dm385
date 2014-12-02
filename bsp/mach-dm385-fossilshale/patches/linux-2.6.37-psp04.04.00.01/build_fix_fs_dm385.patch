@@ -1,0 +1,4708 @@
+Index: kernel/linux-2.6.37-psp04.04.00.01/arch/arm/mach-omap2/board-dm385som.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ kernel/linux-2.6.37-psp04.04.00.01/arch/arm/mach-omap2/board-dm385som.c	2014-08-07 17:02:50.933896711 -0600
+@@ -0,0 +1,940 @@
++/*
++ * Code for DM385 EVM.
++ *
++ * Copyright (C) 2010 Texas Instruments, Inc. - http://www.ti.com/
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation version 2.
++ *
++ * This program is distributed "as is" WITHOUT ANY WARRANTY of any
++ * kind, whether express or implied; without even the implied warranty
++ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ */
++#include <linux/kernel.h>
++#include <linux/init.h>
++#include <linux/device.h>
++#include <linux/spi/spi.h>
++#include <linux/spi/flash.h>
++#include <linux/platform_device.h>
++#include <linux/mtd/mtd.h>
++#include <linux/mtd/nand.h>
++#include <linux/mtd/partitions.h>
++#include <linux/gpio.h>
++#include <linux/i2c.h>
++#include <linux/i2c/at24.h>
++#include <linux/i2c/qt602240_ts.h>
++#include <linux/regulator/machine.h>
++#include <linux/mfd/tps65910.h>
++#include <linux/clk.h>
++#include <linux/err.h>
++#include <linux/input.h>
++#include <linux/gpio_keys.h>
++#include <linux/lis3lv02d.h>				//ROHIT Y SHANBHAG
++#include <linux/i2c/pca953x.h>
++#include <linux/wl12xx.h>				//OMJI
++#include <mach/hardware.h>
++#include <asm/mach-types.h>
++#include <asm/mach/arch.h>
++#include <asm/mach/map.h>
++
++#include <plat/mcspi.h>
++#include <plat/irqs.h>
++#include <plat/board.h>
++#include <plat/common.h>
++#include <plat/asp.h>
++#include <plat/usb.h>
++#include <plat/mmc.h>
++#include <plat/gpmc.h>
++#include <plat/nand.h>
++#include <plat/hdmi_lib.h>
++#include <mach/board-ti814x.h>
++
++#include "board-flash.h"
++#include "clock.h"
++#include "mux.h"
++#include "hsmmc.h"
++#include "control.h"
++
++#include <linux/i2c/tsc2007.h>				//ROHIT Y SHANBHAG
++
++#define GPIO_TSC               31
++#define GPIO_TSC2007_IRQ	46
++
++ #define GPIO_TO_PIN(bank, gpio) (32 * (bank) + (gpio))
++#define GPIO_BUTTON 37
++#ifdef CONFIG_OMAP_MUX
++static struct omap_board_mux board_mux[] __initdata = {
++	{ .reg_offset = OMAP_MUX_TERMINATOR },
++};
++#else
++#define board_mux     NULL
++#endif
++
++
++static int tsc2007_get_irq_level(void)
++{
++        return gpio_get_value(GPIO_TSC2007_IRQ) ? 0 : 1;
++}
++
++static struct omap2_hsmmc_info mmc[] = {
++	{
++
++/* TODO WLAN_EN from i2c i/o exp 128+3*/
++//#define GPIO_WLAN_EN   130
++#define GPIO_WLAN_EN  69
++/* TODO WLAN_IRQ is GP1[13] */
++#define GPIO_WLAN_IRQ	45
++		.mmc		= 1,
++		.caps           = MMC_CAP_4_BIT_DATA,
++                .gpio_cd        = -EINVAL,
++                .gpio_wp        = -EINVAL,
++                .ocr_mask       = MMC_VDD_165_195,
++                .nonremovable   = true,
++	},
++	{
++		.mmc		= 2,
++		.caps		= MMC_CAP_4_BIT_DATA | MMC_CAP_NEEDS_POLL,
++		.gpio_cd	= -EINVAL, /* Dedicated pins for CD and WP */
++		.gpio_wp	= -EINVAL,
++		.ocr_mask	= MMC_VDD_33_34,
++	},
++	{}	/* Terminator */
++};
++
++/* Touchscreen platform data */
++static struct qt602240_platform_data ts_platform_data = {
++	.x_line		= 18,
++	.y_line		= 12,
++	.x_size		= 800,
++	.y_size		= 480,
++	.blen		= 0x01,
++	.threshold	= 30,
++	.voltage	= 2800000,
++	.orient		= QT602240_HORIZONTAL_FLIP,
++};
++
++/*static struct at24_platform_data eeprom_info = {
++	.byte_len       = (256*1024) / 8,
++	.page_size      = 64,
++	.flags          = AT24_FLAG_ADDR16,
++};
++*/
++static struct regulator_consumer_supply dm385evm_mpu_supply =
++	REGULATOR_SUPPLY("mpu", "mpu.0");
++
++/*
++ * DM814x/AM387x (TI814x) devices have restriction that none of the supply to
++ * the device should be turned of.
++ *
++ * NOTE: To prevent turning off regulators not explicitly consumed by drivers
++ * depending on it, ensure following:
++ *	1) Set always_on = 1 for them OR
++ *	2) Avoid calling regulator_has_full_constraints()
++ *
++ * With just (2), there will be a warning about incomplete constraints.
++ * E.g., "regulator_init_complete: incomplete constraints, leaving LDO8 on"
++ *
++ * In either cases, the supply won't be disabled.
++ *
++ * We are taking approach (1).
++ */
++static struct regulator_init_data tps65911_reg_data[] = {
++	/* VRTC */
++	{
++		.constraints = {
++			.min_uV = 1800000,
++			.max_uV = 1800000,
++			.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE |
++						REGULATOR_CHANGE_STATUS,
++			.always_on = 1,
++		},
++	},
++
++	/* VIO -VDDA 1.8V */
++	{
++		.constraints = {
++			.min_uV = 1500000,
++			.max_uV = 1500000,
++			.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE |
++						REGULATOR_CHANGE_STATUS,
++			.always_on = 1,
++		},
++	},
++
++	/* VDD1 - MPU */
++	{
++		.constraints = {
++			.min_uV = 600000,
++			.max_uV = 1500000,
++			.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
++			.always_on = 1,
++		},
++		.num_consumer_supplies	= 1,
++		.consumer_supplies	= &dm385evm_mpu_supply,
++	},
++
++	/* VDD2 - DSP */
++	{
++		.constraints = {
++			.min_uV = 600000,
++			.max_uV = 1500000,
++			.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE |
++						REGULATOR_CHANGE_STATUS,
++			.always_on = 1,
++		},
++	},
++
++	/* VDDCtrl - CORE */
++	{
++		.constraints = {
++			.min_uV = 600000,
++			.max_uV = 1400000,
++			.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
++			.always_on = 1,
++		},
++	},
++
++	/* LDO1 - VDAC */
++	{
++		.constraints = {
++			.min_uV = 1100000,
++			.max_uV = 3300000,
++			.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE |
++						REGULATOR_CHANGE_STATUS,
++			.always_on = 1,
++		},
++	},
++
++	/* LDO2 - HDMI */
++	{
++		.constraints = {
++			.min_uV = 1100000,
++			.max_uV = 3300000,
++			.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE |
++						REGULATOR_CHANGE_STATUS,
++			.always_on = 1,
++		},
++	},
++
++	/* LDO3 - GPIO 3.3V */
++	{
++		.constraints = {
++			.min_uV = 1100000,
++			.max_uV = 3300000,
++			.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE |
++						REGULATOR_CHANGE_STATUS,
++			.always_on = 1,
++		},
++	},
++
++	/* LDO4 - PLL 1.8V */
++	{
++		.constraints = {
++			.min_uV = 1100000,
++			.max_uV = 3300000,
++			.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
++			.always_on = 1,
++		},
++	},
++
++	/* LDO5 - SPARE */
++	{
++		.constraints = {
++			.min_uV = 1100000,
++			.max_uV = 3300000,
++			.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE |
++						REGULATOR_CHANGE_STATUS,
++			.always_on = 1,
++		},
++	},
++
++	/* LDO6 - CDC */
++	{
++		.constraints = {
++			.min_uV = 1100000,
++			.max_uV = 3300000,
++			.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
++			.always_on = 1,
++		},
++	},
++
++	/* LDO7 - SPARE */
++	{
++		.constraints = {
++			.min_uV = 1100000,
++			.max_uV = 3300000,
++			.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE |
++						REGULATOR_CHANGE_STATUS,
++			.always_on = 1,
++		},
++	},
++
++	/* LDO8 - USB 1.8V */
++	{
++		.constraints = {
++			.min_uV = 1100000,
++			.max_uV = 3300000,
++			.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE |
++						REGULATOR_CHANGE_STATUS,
++			.always_on = 1,
++		},
++	},
++};
++
++static struct tps65910_board __refdata tps65911_pdata = {
++	.irq				= 0,	/* No support currently */
++	.gpio_base			= 0,	/* No support currently */
++	.tps65910_pmic_init_data	= tps65911_reg_data,
++};
++
++static struct pca953x_platform_data pca953x_data[] = {
++         [0]= {
++                 .gpio_base      = 128,
++                 .invert         = 0,
++		},
++};
++
++static struct tsc2007_platform_data tsc2007_info = {
++        .model                  = 2007,
++        .x_plate_ohms           = 180,
++	.get_pendown_state = tsc2007_get_irq_level,
++
++};
++
++
++static struct i2c_board_info __initdata ti814x_i2c_boardinfo[] = {
++/*	{
++		I2C_BOARD_INFO("eeprom", 0x50),
++		.platform_data	= &eeprom_info,
++	},
++	{
++		I2C_BOARD_INFO("cpld", 0x23),
++	},*/
++	{
++		I2C_BOARD_INFO("tlv320aic3x", 0x18),
++	},
++/*	{
++		I2C_BOARD_INFO("IO Expander", 0x20),
++	},*/
++/*	{
++		I2C_BOARD_INFO("tlc59108", 0x40),
++	},*/
++/*	{
++		I2C_BOARD_INFO("qt602240_ts", 0x4A),
++		.platform_data = &ts_platform_data,
++	},*/
++	{
++		I2C_BOARD_INFO("tps65911", 0x2D),
++		.platform_data = &tps65911_pdata,
++	},
++	{
++	         I2C_BOARD_INFO("ft5x0x_ts",0x38),
++	},
++
++	{
++	         I2C_BOARD_INFO("pca9634" , 0x05),
++	},
++	{
++                 I2C_BOARD_INFO("pca9537", 0x49),
++                .platform_data = &pca953x_data[0],
++
++         },
++	{
++		I2C_BOARD_INFO("tsc2007", 0x48),
++                .type           = "tsc2007",
++                .platform_data  = &tsc2007_info,
++	},
++};
++
++
++
++
++/*ADDED TO SUPPORT TSC2007 RESISTIVE TOUCH ::: ROHIT Y SHANBHAG
++****************************************************************/
++
++static void __init dm385_tsc2007_init(void)
++{
++  int error;
++       printk("TSC2007 pin mux\n");
++       omap_mux_init_signal("gpmc_a19.gpio1_14_mux0", 0);
++       error = gpio_request(46, "tsc2007_irq");
++
++        if (error < 0)
++        {
++                printk(KERN_ERR "%s: failed to request GPIO for TSC IRQ"": %d\n", __func__, error);
++                 return;
++         }
++
++        gpio_direction_input(46);
++};
++
++
++
++static void __init ti814x_tsc_init(void)
++{
++	int error;
++
++	omap_mux_init_signal("mlb_clk.gpio0_31", TI814X_PULL_DIS | (1 << 18));
++
++
++       omap_mux_init_signal("gpmc_a19.gpio1_14_mux0", 0);
++	error = gpio_request(GPIO_TSC, "ts_irq");
++	if (error < 0) {
++		printk(KERN_ERR "%s: failed to request GPIO for TSC IRQ"
++			": %d\n", __func__, error);
++		return;
++	}
++
++	gpio_direction_input(GPIO_TSC);
++	ti814x_i2c_boardinfo[6].irq = gpio_to_irq(GPIO_TSC);
++
++	gpio_export(31, true);
++}
++static void ti813x_cir_pin_mux(void)
++{
++	char mux_name[100];
++	sprintf(mux_name, "uart0_rin.uart1_rxd_mux0");
++	printk("cir pinmux\n");
++	omap_mux_init_signal(mux_name, OMAP_MUX_MODE0 |
++			TI814X_PULL_DIS | TI814X_INPUT_EN);
++	return;
++}
++
++/********************************************************************
++		///////////////////////////////
++*******************************************************************/
++static void __init comp_video_pwd(void)
++{
++	int ret = 0;
++
++	omap_mux_init_signal("mmc2_clk.gpio1_15_mux1",OMAP_PIN_OUTPUT);
++
++
++
++	ret = gpio_request(47, "comp_pwd");
++	if (ret) {
++		printk(KERN_ERR "%s: failed to request GPIO for comp_pwd"": %d\n", __func__, ret);
++	}
++
++	gpio_export(47, true);
++	gpio_direction_output(47, 1);
++	//gpio_export(128,true);
++	//gpio_export(129,true);
++	//gpio_export(8,true);
++
++}
++
++static void __init ti814x_evm_i2c_init(void)
++{
++	/* There are 4 instances of I2C in TI814X but currently only one
++	 * instance is being used on the TI8148 EVM
++	 */
++	omap_register_i2c_bus(1, 100, ti814x_i2c_boardinfo,
++			ARRAY_SIZE(ti814x_i2c_boardinfo));
++}
++
++static u8 dm385_iis_serializer_direction[] = {
++	TX_MODE,	RX_MODE,	INACTIVE_MODE,	INACTIVE_MODE,
++	INACTIVE_MODE,	INACTIVE_MODE,	INACTIVE_MODE,	INACTIVE_MODE,
++	INACTIVE_MODE,	INACTIVE_MODE,	INACTIVE_MODE,	INACTIVE_MODE,
++	INACTIVE_MODE,	INACTIVE_MODE,	INACTIVE_MODE,	INACTIVE_MODE,
++};
++
++static struct snd_platform_data dm385_evm_snd_data = {
++	.tx_dma_offset	= 0x46400000,
++	.rx_dma_offset	= 0x46400000,
++	.op_mode	= DAVINCI_MCASP_IIS_MODE,
++	.num_serializer = ARRAY_SIZE(dm385_iis_serializer_direction),
++	.tdm_slots	= 2,
++	.serial_dir	= dm385_iis_serializer_direction,
++	.asp_chan_q	= EVENTQ_2,
++	.version	= MCASP_VERSION_2,
++	//	.txnumevt	= 1,
++	//	.txnumevt	= 1,
++	.rxnumevt	= 64,
++	.rxnumevt	= 64,
++};
++
++/* NOR Flash partitions */
++static struct mtd_partition ti814x_evm_norflash_partitions[] = {
++	/* bootloader (U-Boot, etc) in first 5 sectors */
++	{
++		.name		= "bootloader",
++		.offset		= 0,
++		.size		= 2 * SZ_128K,
++		.mask_flags	= MTD_WRITEABLE, /* force read-only */
++	},
++	/* bootloader params in the next 1 sectors */
++	{
++		.name		= "env",
++		.offset		= MTDPART_OFS_APPEND,
++		.size		= SZ_128K,
++		.mask_flags	= 0,
++	},
++	/* kernel */
++	{
++		.name		= "kernel",
++		.offset		= MTDPART_OFS_APPEND,
++		.size		= 2 * SZ_2M,
++		.mask_flags	= 0
++	},
++	/* file system */
++	{
++		.name		= "filesystem",
++		.offset		= MTDPART_OFS_APPEND,
++		.size		= 25 * SZ_2M,
++		.mask_flags	= 0
++	},
++	/* reserved */
++	{
++		.name		= "reserved",
++		.offset		= MTDPART_OFS_APPEND,
++		.size		= MTDPART_SIZ_FULL,
++		.mask_flags	= 0
++	}
++};
++
++/* NAND flash information */
++static struct mtd_partition ti814x_nand_partitions[] = {
++	/* All the partition sizes are listed in terms of NAND block size */
++	{
++		.name           = "U-Boot-min",
++		.offset         = 0,    /* Offset = 0x0 */
++		.size           = SZ_128K,
++	},
++	{
++		.name           = "U-Boot",
++		.offset         = MTDPART_OFS_APPEND,/* Offset = 0x0 + 128K */
++		.size           = 18 * SZ_128K,
++	},
++	{
++		.name           = "U-Boot Env",
++		.offset         = MTDPART_OFS_APPEND,   /* Offset = 0x260000 */
++		.size           = 1 * SZ_128K,
++	},
++	{
++		.name           = "Kernel",
++		.offset         = MTDPART_OFS_APPEND,   /* Offset = 0x280000 */
++		.size           = 34 * SZ_128K,
++	},
++	{
++		.name           = "File System",
++		.offset         = MTDPART_OFS_APPEND,   /* Offset = 0x6C0000 */
++		.size           = 1601 * SZ_128K,
++	},
++	{
++		.name           = "Reserved",
++		.offset         = MTDPART_OFS_APPEND,   /* Offset = 0xCEE0000 */
++		.size           = MTDPART_SIZ_FULL,
++	},
++//	{
++//		.name           = "File System",
++//		.offset         = MTDPART_OFS_APPEND,   /* Offset = 0xCEE0000 */
++//		.size           = MTDPART_SIZ_FULL,
++//	},
++};
++
++/* SPI fLash information */
++struct mtd_partition dm385_spi_partitions[] = {
++	/* All the partition sizes are listed in terms of erase size */
++	{
++		.name		= "U-Boot-min",
++		.offset		= 0,	/* Offset = 0x0 */
++		.size		= 32 * SZ_4K,
++		.mask_flags	= MTD_WRITEABLE, /* force read-only */
++	},
++	{
++		.name		= "U-Boot",
++		.offset		= MTDPART_OFS_APPEND, /* 0x0 + (32*4K) */
++		.size		= 64 * SZ_4K,
++		.mask_flags	= MTD_WRITEABLE, /* force read-only */
++	},
++	{
++		.name		= "U-Boot Env",
++		.offset		= MTDPART_OFS_APPEND, /* 0x40000 + (32*4K) */
++		.size		= 2 * SZ_4K,
++	},
++	{
++		.name		= "Kernel",
++		.offset		= MTDPART_OFS_APPEND, /* 0x42000 + (32*4K) */
++		.size		= 640 * SZ_4K,
++	},
++	{
++		.name		= "File System",
++		.offset		= MTDPART_OFS_APPEND, /* 0x2C2000 + (32*4K) */
++		.size		= MTDPART_SIZ_FULL, /* size ~= 1.1 MiB */
++	}
++};
++
++/*const struct flash_platform_data dm385_spi_flash = {
++	.type		= "w25x32",
++	.name		= "spi_flash",
++	.parts		= dm385_spi_partitions,
++	.nr_parts	= ARRAY_SIZE(dm385_spi_partitions),
++};
++
++struct spi_board_info __initdata dm385_spi_slave_info[] = {
++	{
++		.modalias	= "m25p80",
++		.platform_data	= &dm385_spi_flash,
++		.irq		= -1,
++		.max_speed_hz	= 75000000,
++		.bus_num	= 1,
++		.chip_select	= 0,
++	},
++};*/
++
++//Interrupt Based Accelerometer Configuration : Omji Mishra
++/*************************************************************/
++static struct lis3lv02d_platform_data lis3lv02d_spi_pdata = {
++        .irq_cfg        = LIS3_IRQ1_DATA_READY,
++        .axis_x = 0,
++        .axis_y = 1,
++        .axis_z = 2,
++};
++
++struct spi_board_info __initdata  dm385_spi_slave_info[] = {
++
++        {
++                .modalias       = "lis3lv02d_spi",
++                .platform_data  = &lis3lv02d_spi_pdata,
++                .max_speed_hz   = 1000000,
++                .bus_num        = 2,
++                .chip_select    = 0,
++                .irq            = -1,
++                .mode           = SPI_MODE_0
++        }
++};
++void __init  dm385_spi_init(void)
++{
++int error_acc;
++        /* Accelerometer INT1 */
++        error_acc = gpio_request(35, "Accelerometer");
++        if (error_acc < 0) {
++                printk(KERN_ERR "%s: failed to request GPIO for Accel"
++                                ": %d\n", __func__, error_acc);
++                return;
++        }
++        gpio_direction_input(35);
++        dm385_spi_slave_info[0].irq = gpio_to_irq(35);
++
++        spi_register_board_info(dm385_spi_slave_info,
++                        ARRAY_SIZE(dm385_spi_slave_info));
++}
++/*********************************************************************/
++
++static struct omap_musb_board_data musb_board_data = {
++	.interface_type		= MUSB_INTERFACE_ULPI,
++#ifdef CONFIG_USB_MUSB_OTG
++	.mode           = MUSB_OTG,
++#elif defined(CONFIG_USB_MUSB_HDRC_HCD)
++	.mode           = MUSB_HOST,
++#elif defined(CONFIG_USB_GADGET_MUSB_HDRC)
++	.mode           = MUSB_PERIPHERAL,
++#endif
++	.power		= 500,
++	.instances	= 1,
++};
++
++static void __init dm385_evm_init_irq(void)
++{
++	omap2_init_common_infrastructure();
++	omap2_init_common_devices(NULL, NULL);
++	omap_init_irq();
++	gpmc_init();
++}
++
++static void __init ft5x0x_ts_init(void)
++{
++
++
++	int error;
++       printk("FT5x0x pin mux\n");
++       omap_mux_init_signal("gpmc_a19.gpio1_14_mux0", 0);
++       error = gpio_request(46, "ftxts_irq");
++
++	if (error < 0)
++	{
++                printk(KERN_ERR "%s: failed to request GPIO for TSC IRQ"": %d\n", __func__, error);
++                 return;
++         }
++
++        gpio_direction_input(46);
++
++};
++
++#ifdef CONFIG_SND_SOC_TI81XX_HDMI
++static struct snd_hdmi_platform_data dm385_snd_hdmi_pdata = {
++	.dma_addr = TI81xx_HDMI_WP + HDMI_WP_AUDIO_DATA,
++	.channel = 53,
++	.data_type = 4,
++	.acnt = 4,
++	.fifo_level = 0x20,
++};
++
++static struct platform_device dm385_hdmi_audio_device = {
++	.name   = "hdmi-dai",
++	.id     = -1,
++	.dev = {
++		.platform_data = &dm385_snd_hdmi_pdata,
++	}
++};
++
++static struct platform_device dm385_hdmi_codec_device = {
++	.name   = "hdmi-dummy-codec",
++	.id     = -1,
++};
++
++
++/************************************************************************/
++//					OMJI
++/************************************************************************/
++static struct gpio_keys_button gpio_buttons[] = {
++         {
++          .code          = KEY_ENTER,
++          .gpio          = GPIO_BUTTON,
++          .desc          = "user",
++          .wakeup        = 1,
++          },
++};
++
++static struct gpio_keys_platform_data gpio_key_info = {
++         .buttons        = gpio_buttons,
++         .nbuttons       = ARRAY_SIZE(gpio_buttons),
++ };
++
++static struct platform_device keys_gpio = {
++         .name   = "gpio-keys",
++         .id     = -1,
++         .dev    = {
++                 .platform_data  = &gpio_key_info,
++         },
++};
++
++/************************************************************************/
++/************************************************************************/
++
++
++static struct platform_device *dm385_devices[] __initdata = {
++	&dm385_hdmi_audio_device,
++	&dm385_hdmi_codec_device,
++//	&keys_gpio,
++};
++
++
++/*
++ * HDMI Audio Auto CTS MCLK configuration.
++ * sysclk20, sysclk21, sysclk21 and CLKS(external)
++ * setting sysclk20 as the parent of hdmi_i2s_ck
++ * ToDo:
++ */
++void __init ti813x_hdmi_clk_init(void)
++{
++	int ret = 0;
++	struct clk *parent, *child;
++
++	/* modify the clk name to choose diff clk*/
++	parent = clk_get(NULL, "sysclk20_ck");
++	printk("sysclk20 for hdmi \n");
++	if (IS_ERR(parent))
++		pr_err("Unable to get [sysclk20_ck] clk\n");
++
++	child = clk_get(NULL, "hdmi_i2s_ck");
++	if (IS_ERR(child))
++		pr_err("Unable to get [hdmi_i2s_ck] clk\n");
++
++	ret = clk_set_parent(child, parent);
++	if (ret < 0)
++		pr_err("Unable to set parent clk [hdmi_i2s_ck]\n");
++
++	clk_put(child);
++	clk_put(parent);
++	pr_debug("{{HDMI Audio MCLK setup completed}}\n");
++}
++#endif
++
++struct wl12xx_platform_data wlan_data = {
++//       .irq = OMAP_GPIO_IRQ(GPIO_WLAN_IRQ),
++       /* COM6 (127x) uses FREF */
++       .board_ref_clock = WL12XX_REFCLOCK_38_XTAL,
++       /* COM7 (128x) uses TCXO */
++       .board_tcxo_clock = WL12XX_TCXOCLOCK_26,
++};
++
++static int wl12xx_set_power(struct device *dev, int slot, int power_on,
++                           int vdd)
++{
++       static bool power_state;
++
++       pr_debug("Powering %s wl12xx", power_on ? "on" : "off");
++       printk("Powering %s wl12xx", power_on ? "on" : "off");
++
++       if (power_on == power_state)
++               return 0;
++       power_state = power_on;
++
++       if (power_on) {
++               /* Power up sequence required for wl127x devices */
++	      printk("power_on \n" );
++               gpio_set_value(GPIO_WLAN_EN, 1);
++               usleep_range(15000, 15000);
++               gpio_set_value(GPIO_WLAN_EN, 0);
++               usleep_range(1000, 1000);
++               gpio_set_value(GPIO_WLAN_EN, 1);
++               msleep(70);
++       } else {
++               gpio_set_value(GPIO_WLAN_EN, 0);
++
++	      printk("power_off \n" );
++       }
++
++       return 0;
++}
++
++static void ti814x_wl12xx_wlan_init(void)
++{
++       struct device *dev;
++       struct omap_mmc_platform_data *pdata;
++       int ret, error;
++
++       /* Set up mmc0 muxes */
++       omap_mux_init_signal("mmc0_clk", TI814X_INPUT_EN | TI814X_PULL_UP);
++       omap_mux_init_signal("mmc0_cmd", TI814X_INPUT_EN | TI814X_PULL_UP);
++       omap_mux_init_signal("mmc0_dat0", TI814X_INPUT_EN | TI814X_PULL_UP);
++       omap_mux_init_signal("mmc0_dat1", TI814X_INPUT_EN | TI814X_PULL_UP);
++       omap_mux_init_signal("mmc0_dat2", TI814X_INPUT_EN | TI814X_PULL_UP);
++       omap_mux_init_signal("mmc0_dat3", TI814X_INPUT_EN | TI814X_PULL_UP);
++
++        /* Set up the WLAN_EN and WLAN_IRQ muxes */
++//        omap_mux_init_signal("mmc2_dat6.gpio1_20", TI814X_PULL_DIS);	/* TODO  from i2c io exp*/
++        omap_mux_init_signal("gpmc_a16.gpio2_05_mux0", TI814X_PULL_DIS);	/* TODO  from i2c io exp*/
++        omap_mux_init_signal("gpmc_a18.gpio1_13_mux0", TI814X_INPUT_EN | TI814X_PULL_DIS);	/*TODO */
++
++       error = gpio_request(45, "wlan_irq");
++
++	if (error < 0)
++	{
++                printk(KERN_ERR "%s: failed to request GPIO for  wlan IRQ"": %d\n", __func__, error);
++                 return;
++         }
++
++        gpio_direction_input(45);
++
++        wlan_data.irq = gpio_to_irq(45);
++
++       /* Pass the wl12xx platform data information to the wl12xx driver */
++       if (wl12xx_set_platform_data(&wlan_data)) {
++               pr_err("Error setting wl12xx data\n");
++               return;
++       }
++
++       /*
++        * The WLAN_EN gpio has to be toggled without using a fixed regulator,
++        * as the omap_hsmmc does not enable/disable regulators on the TI814X.
++        */
++       ret = gpio_request_one(GPIO_WLAN_EN, GPIOF_OUT_INIT_LOW, "wlan_en");
++//       ret = gpio_request(GPIO_WLAN_EN, "wlan_en");
++       if (ret) {
++               pr_err("Error requesting wlan enable gpio: %d\n", ret);
++               return;
++       }
++
++        gpio_direction_output(GPIO_WLAN_EN,0);
++
++       /*
++        * Set our set_power callback function which will be called from
++        * set_ios. This is requireq since, unlike other omap2+ platforms, a
++        * no-op set_power function is registered. Thus, we cannot use a fixed
++        * regulator, as it will never be toggled.
++        * Moreover, even if this was not the case, we're on mmc0, for which
++        * omap_hsmmc' set_power functions do not toggle any regulators.
++        * TODO: Consider modifying omap_hsmmc so it would enable/disable a
++        * regulator for ti814x/mmc0.
++        */
++       dev = mmc[0].dev;
++       if (!dev) {
++               pr_err("wl12xx mmc device initialization failed\n");
++               return;
++       }
++
++       pdata = dev->platform_data;
++       if (!pdata) {
++               pr_err("Platform data of wl12xx device not set\n");
++               return;
++       }
++
++       pdata->slots[0].set_power = wl12xx_set_power;
++}
++
++static void __init ti814x_wl12xx_init(void)
++{
++       ti814x_wl12xx_wlan_init();
++}
++
++
++static void __init dm385_evm_init(void)
++{
++	int bw; /* bus-width */
++
++	ti814x_mux_init(board_mux);
++	omap_serial_init();
++//	ti814x_tsc_init();
++
++        comp_video_pwd();
++
++	dm385_tsc2007_init();
++	ti814x_evm_i2c_init();
++//	dm385_irda_init()
++	ti813x_cir_pin_mux();
++	ti81xx_register_mcasp(0, &dm385_evm_snd_data);
++
++	omap2_hsmmc_init(mmc);
++
++	/* nand initialisation */
++	if (cpu_is_ti814x()) {
++		u32 *control_status = TI81XX_CTRL_REGADDR(0x40);
++		if (*control_status & (1<<16))
++			bw = 2; /*16-bit nand if BTMODE BW pin on board is ON*/
++		else
++			bw = 0; /*8-bit nand if BTMODE BW pin on board is OFF*/
++
++		board_nand_init(ti814x_nand_partitions,
++				ARRAY_SIZE(ti814x_nand_partitions), 0, bw);
++	} else
++		board_nand_init(ti814x_nand_partitions,
++				ARRAY_SIZE(ti814x_nand_partitions), 0, NAND_BUSWIDTH_16);
++
++	/* initialize usb */
++	usb_musb_init(&musb_board_data);
++
++	dm385_spi_init();
++//	ft5x0x_ts_init();
++#ifdef CONFIG_SND_SOC_TI81XX_HDMI
++	/* hdmi mclk setup */
++	ti813x_hdmi_clk_init();
++
++	platform_add_devices(dm385_devices, ARRAY_SIZE(dm385_devices));
++#endif
++	ti814x_wl12xx_init();
++	regulator_use_dummy_regulator();
++//	board_nor_init(ti814x_evm_norflash_partitions,
++//			ARRAY_SIZE(ti814x_evm_norflash_partitions), 0);
++}
++
++static void __init dm385_evm_map_io(void)
++{
++	omap2_set_globals_ti816x();
++	ti81xx_map_common_io();
++}
++
++MACHINE_START(DM385EVM, "dm385evm")
++/* Maintainer: Texas Instruments */
++.boot_params	= 0x80000100,
++	.map_io		= dm385_evm_map_io,
++	.reserve         = ti81xx_reserve,
++	.init_irq	= dm385_evm_init_irq,
++	.init_machine	= dm385_evm_init,
++	.timer		= &omap_timer,
++	MACHINE_END
+Index: kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/hdmi_lib.h
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/hdmi_lib.h	2014-08-07 17:02:50.985896709 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/hdmi_lib.h	2014-08-07 17:02:50.933896711 -0600
+@@ -313,6 +313,11 @@
+ 	HDMI_SAMPLE_24BITS = 1
+ };
+ 
++enum hdmi_block_start_end {
++	HDMI_BLOCK_STARTEND_ON = 0,
++	HDMI_BLOCK_STARTEND_OFF = 1
++};
++
+ struct hdmi_audio_format {
+ 	enum hdmi_stereo_channel	stereo_channel_enable;
+ 	enum hdmi_cea_code		audio_channel_location;
+@@ -321,6 +326,7 @@
+ 	enum hdmi_sample_order		left_before;
+ 	enum hdmi_sample_perword	sample_number;
+ 	enum hdmi_sample_size		sample_size;
++	enum hdmi_block_start_end	block_start_end;
+ };
+ 
+ enum hdmi_dma_irq {
+@@ -328,10 +334,6 @@
+ 	HDMI_THRESHOLD_IRQ = 1
+ };
+ 
+-enum hdmi_block_start_end {
+-	HDMI_BLOCK_STARTEND_ON = 0,
+-	HDMI_BLOCK_STARTEND_OFF = 1
+-};
+ enum hdmi_data_format {
+ 	HDMI_DF_YUV422 = 0,
+ 	HDMI_DF_YUV444 = 1,
+@@ -464,6 +466,7 @@
+ 	u32				if_channel_number;
+ 	enum hdmi_core_if_sample_size	if_sample_size;
+ 	enum hdmi_cea_code		if_audio_channel_location;
++	enum hdmi_audio_justify         justify;
+  };
+ struct hdmi_notifier {
+ 	void (*hpd_notifier)(int state, void *data);
+@@ -482,11 +485,21 @@
+ struct snd_hdmi_platform_data {
+ 	u32 dma_addr;
+ 	u32 channel;
++	u32 dma_chan_q;
+ 	u32 data_type;
+ 	u32 acnt;
+ 	u32 fifo_level;
+ };
+ 
++#define HDMI_CONNECT		0x01
++#define HDMI_DISCONNECT		0x02
++#define HDMI_HPD_MODIFY		0x04
++#define HDMI_FIRST_HPD		0x08
++#define HDMI_HPD_LOW		0x10
++#define HDMI_HPD_HIGH		0x20
++#define HDMI_BCAP		0x40
++#define HDMI_RI_ERR		0x80
++
+ struct hdmi_irq_status {
+ 	/* This status says whether HPD occured or not. This is to
+ 	   protect against the debouce and first HDP We make sure
+@@ -521,6 +534,7 @@
+ int hdmi_w1_start_audio_transfer(u32);
+ int HDMI_CORE_DDC_READEDID(u32 Core, u8 *data, u16 max_length);
+ int hdmi_lib_enable(struct hdmi_config *cfg);
++void HDMI_W1_HPD_handler(int *r);
+ int hdmi_lib_init(void);
+ void hdmi_lib_exit(void);
+ int hdmi_configure_csc(enum hdmi_core_av_csc csc);
+Index: kernel/linux-2.6.37-psp04.04.00.01/arch/arm/mach-omap2/include/mach/board-dm813x.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ kernel/linux-2.6.37-psp04.04.00.01/arch/arm/mach-omap2/include/mach/board-dm813x.h	2014-08-07 17:02:50.933896711 -0600
+@@ -0,0 +1,49 @@
++/*
++ * arch/arm/mach-omap2/include/mach/board-ti814x.h
++ *
++ * Header file for TI814x evm.
++ *
++ * Copyright (C) 2010 Texas Instruments, Inc. - http://www.ti.com/
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation version 2.
++ *
++ * This program is distributed "as is" WITHOUT ANY WARRANTY of any
++ * kind, whether express or implied; without even the implied warranty
++ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ */
++
++#ifndef _BOARD_DM813X_H
++#define _BOARD_DM813X_H
++
++#include <plat/ti81xx-vpss.h>
++
++
++#ifdef CONFIG_MACH_DM385EVM
++int dm813x_pcf8575_init(void);
++int dm813x_pcf8575_exit(void);
++int dm813x_pcf8575_ths7360_sd_enable(enum ti81xx_ths_filter_ctrl ctrl);
++int dm813x_pcf8575_ths7360_hd_enable(enum ti81xx_ths7360_sf_ctrl ctrl);
++#else
++static inline int dm813x_pcf8575_init(void)
++{
++	return 0;
++}
++static inline int dm813x_pcf8575_exit(void)
++{
++	return 0;
++}
++static inline int dm813x_pcf8575_ths7360_sd_enable(
++	enum ti81xx_ths_filter_ctrl ctrl)
++{
++	return 0;
++}
++static inline int dm813x_pcf8575_ths7360_hd_enable(
++	enum ti81xx_ths7360_sf_ctrl ctrl)
++{
++	return 0;
++}
++#endif
++#endif /* _BOARD_TI814X_H */
+Index: kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/hdcp_ddc.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/hdcp_ddc.h	2014-08-07 17:02:50.933896711 -0600
+@@ -0,0 +1,121 @@
++/*
++ * hdcp_ddc.h
++ *
++ * HDCP interface DSS driver setting for TI's OMAP4 family of processor.
++ * Copyright (C) 2010-2011 Texas Instruments Incorporated - http://www.ti.com/
++ * Authors: Fabrice Olivero
++ *	Fabrice Olivero <f-olivero@ti.com>
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms of the GNU General Public License version 2 as published by
++ * the Free Software Foundation.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
++ * more details.
++ *
++ * You should have received a copy of the GNU General Public License along with
++ * this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++/* Rev history:
++ * Sujith Shivalingappa <sujith.s@ti.com> Added init routines
++ *				added to support TI814x and TI816x
++ */
++
++#define HDCPRX_SLV 0x74
++
++#define MASTER_BASE		0xEC
++#define MDDC_MANUAL_ADDR	0xEC
++#define MDDC_SLAVE_ADDR		0xED
++#define MDDC_SEGMENT_ADDR	0xEE
++#define MDDC_OFFSET_ADDR	0xEF
++#define MDDC_DIN_CNT_LSB_ADDR	0xF0
++#define MDDC_DIN_CNT_MSB_ADDR	0xF1
++#define MDDC_STATUS_ADDR	0xF2
++#define MDDC_COMMAND_ADDR	0xF3
++#define MDDC_FIFO_ADDR		0xF4
++#define MDDC_FIFO_CNT_ADDR	0xF5
++
++#define BIT_MDDC_ST_IN_PROGR	0x10
++#define BIT_MDDC_ST_I2C_LOW	0x40
++#define BIT_MDDC_ST_NO_ACK	0x20
++
++/* DDC Command[3:0]:
++ *
++ * 1111 - Abort transaction
++ * 1001 - Clear FIFO
++ * 1010 - Clock SCL
++ * 0000 - Current address read with no ACK on last byte
++ * 0001 - Current address read with ACK on last byte
++ * 0010 - Sequential read with no ACK on last byte
++ * 0011 - Sequential read with ACK on last byte
++ * 0100 - Enhanced DDC read with no ACK on last byte
++ * 0101 - Enhanced DDC read with ACK on last byte
++ * 0110 - Sequential write ignoring ACK on last byte
++ * 0111 - Sequential write requiring ACK on last byte
++ */
++
++#define MASTER_CMD_ABORT        0x0f
++#define MASTER_CMD_CLEAR_FIFO   0x09
++#define MASTER_CMD_CLOCK        0x0a
++#define MASTER_CMD_CUR_RD       0x00
++#define MASTER_CMD_SEQ_RD       0x02
++#define MASTER_CMD_ENH_RD       0x04
++#define MASTER_CMD_SEQ_WR       0x06
++
++#define MASTER_FIFO_WR_USE      0x01
++#define MASTER_FIFO_RD_USE      0x02
++#define MASTER_FIFO_EMPTY       0x04
++#define MASTER_FIFO_FULL        0x08
++#define MASTER_DDC_BUSY         0x10
++#define MASTER_DDC_NOACK        0x20
++#define MASTER_DDC_STUCK        0x40
++#define MASTER_DDC_RSVD         0x80
++
++/* OMAP 4 HDMI TRM: */
++#define HDMI_IP_CORE_SYSTEM__DDC_MAN		0x3B0
++#define HDMI_IP_CORE_SYSTEM__DDC_ADDR		0x3B4
++#define HDMI_IP_CORE_SYSTEM__DDC_SEGM		0x3B8
++#define HDMI_IP_CORE_SYSTEM__DDC_OFFSET		0x3BC
++#define HDMI_IP_CORE_SYSTEM__DDC_COUNT1		0x3C0
++#define HDMI_IP_CORE_SYSTEM__DDC_COUNT2		0x3C4
++#define HDMI_IP_CORE_SYSTEM__DDC_STATUS		0x3C8
++#define HDMI_IP_CORE_SYSTEM__DDC_CMD		0x3CC
++#define HDMI_IP_CORE_SYSTEM__DDC_DATA		0x3D0
++#define HDMI_IP_CORE_SYSTEM__DDC_FIFOCNT	0x3D4
++
++#define IIC_OK 0
++#define _IIC_CAPTURED  1
++#define _IIC_NOACK     2
++#define _MDDC_CAPTURED 3
++#define _MDDC_NOACK    4
++#define _MDDC_FIFO_FULL  5
++
++typedef struct {
++	u8 slaveAddr;
++	u8 offset; /* "offset = DDC_SEGM register" */
++	u8 regAddr;
++	u8 nbytes_lsb;
++	u8 nbytes_msb;
++	u8 dummy;
++	u8 cmd;
++	u8 *pdata;
++	u8 data[6];
++} mddc_type;
++
++enum ddc_operation {
++	DDC_READ,
++	DDC_WRITE
++};
++
++enum ri_suspend_resume {
++	AUTO_RI_SUSPEND,
++	AUTO_RI_RESUME
++};
++
++/* DDC */
++int hdcp_ddc_read(u16 no_bytes, u8 addr, u8 *pdata);
++int hdcp_ddc_write(u16 no_bytes, u8 addr, u8 *pdata);
++void hdcp_ddc_abort(void);
+Index: kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/hdcp_lib.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/hdcp_lib.h	2014-08-07 17:02:50.933896711 -0600
+@@ -0,0 +1,250 @@
++/*
++ * hdcp_lib.h
++ *
++ * HDCP interface DSS driver setting for TI's OMAP4 family of processor.
++ * Copyright (C) 2010-2011 Texas Instruments Incorporated - http://www.ti.com/
++ * Authors: Fabrice Olivero
++ *	Fabrice Olivero <f-olivero@ti.com>
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms of the GNU General Public License version 2 as published by
++ * the Free Software Foundation.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
++ * more details.
++ *
++ * You should have received a copy of the GNU General Public License along with
++ * this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++/* Rev history:
++ * Sujith Shivalingappa <sujith.s@ti.com> Added init routines
++ *		added to support TI814x and TI816x
++ *		Clean up - removed unused / un-required strucutres / defines
++ */
++#ifndef _HDCP_LIB_H_
++#define _HDCP_LIB_H_
++
++#include <linux/mutex.h>
++#include <linux/workqueue.h>
++#include <linux/init.h>
++#include <linux/kernel.h>
++#include <linux/io.h>
++#include <linux/slab.h>
++#include <linux/fs.h>
++
++#include <linux/ti81xxhdmi.h>
++
++/* Configuration control for this library */
++/* Auto RI mode is to be supported */
++#define _9032_AUTO_RI_
++/* Auto BCAP polling is to be supported */
++#define _9032_BCAP_
++/* Toggel Repeater bit, before updating with correct value.
++	This workaround is not required for normal operation. i.e this macro
++	should be defined */
++#undef _9032_AN_STOP_FIX_
++#ifdef DEBUG
++#define DDC_DBG			/* Log DDC data */
++#undef POWER_TRANSITION_DBG	/* Add wait loops to allow testing DSS power
++				 * transition during HDCP */
++#endif
++
++/***************************/
++/* Definitions             */
++/***************************/
++
++/* Status / error codes */
++#define HDCP_OK				0
++#define HDCP_DDC_ERROR			1
++#define HDCP_AUTH_FAILURE		2
++#define HDCP_AKSV_ERROR			3
++#define HDCP_3DES_ERROR			4
++#define HDCP_SHA1_ERROR			5
++#define HDCP_DRIVER_ERROR		6
++#define HDCP_CANCELLED_AUTH		7
++
++#define HDCP_INFINITE_REAUTH		0x100
++#define HDCP_MAX_DDC_ERR		5
++
++/* FIXME: should be 300ms delay between HDMI start frame event and HDCP enable
++ * (to respect 7 VSYNC delay in 24 Hz)
++ */
++#define HDCP_ENABLE_DELAY		300
++#define HDCP_R0_DELAY			110
++#define HDCP_KSV_TIMEOUT_DELAY		5000
++#define HDCP_REAUTH_DELAY		100
++
++/* DDC access timeout in ms */
++#define HDCP_DDC_TIMEOUT		500
++#define HDCP_STOP_FRAME_BLOCKING_TIMEOUT	(2*HDCP_DDC_TIMEOUT)
++
++/* Defined Twice - Fixme */
++#define DESHDCP_KEY_SIZE 		160
++struct hdcp_encrypt_control {
++	uint32_t in_key[DESHDCP_KEY_SIZE];
++	uint32_t *out_key;
++};
++
++/***************************/
++/* HW specific definitions */
++/***************************/
++
++#define DSS_SS_FROM_L3__DESHDCP 0x58007000
++
++/* DESHDCP registers */
++#define DESHDCP__DHDCP_CTRL   0x020
++#define DESHDCP__DHDCP_DATA_L 0x024
++#define DESHDCP__DHDCP_DATA_H 0x028
++
++/* DESHDCP CTRL bits */
++#define DESHDCP__DHDCP_CTRL__DIRECTION_POS_F 2
++#define DESHDCP__DHDCP_CTRL__DIRECTION_POS_L 2
++
++#define DESHDCP__DHDCP_CTRL__OUTPUT_READY_POS_F 0
++#define DESHDCP__DHDCP_CTRL__OUTPUT_READY_POS_L 0
++
++
++/* HDMI CORE SYSTEM base address */
++/*-------------------------------*/
++#define HDMI_IP_CORE_SYSTEM 			0x400
++#define HDMI_IP_CORE_SYSTEM__DCTL		0x034
++#define HDMI_IP_CORE_SYSTEM__HDCP_CTRL		0x03C
++#define HDMI_IP_CORE_SYSTEM__BKSV0		0x040
++#define HDMI_IP_CORE_SYSTEM__AN0		0x054
++#define HDMI_IP_CORE_SYSTEM__AKSV0		0x074
++#define HDMI_IP_CORE_SYSTEM__R1			0x088
++#define HDMI_IP_CORE_SYSTEM__R2			0x08C
++#define HDMI_IP_CORE_SYSTEM__RI_CMD		0x09C
++#define HDMI_IP_CORE_SYSTEM__RI_STAT		0x098
++#define HDMI_IP_CORE_SYSTEM__INTR2		0x1C8
++#define HDMI_IP_CORE_SYSTEM__INTR3		0x1CC
++#define HDMI_IP_CORE_SYSTEM__INT_UNMASK2	0x1D8
++#define HDMI_IP_CORE_SYSTEM__INT_UNMASK3	0x1DC
++#define HDMI_IP_CORE_SYSTEM__SHA_CTRL		0x330
++#define HDMI_IP_CORE_SYSTEM__INTR2__BCAP	0x80
++#define HDMI_IP_CORE_SYSTEM__INTR3__RI_ERR	0xF0
++
++/* HDMI CORE AV base address */
++/*---------------------------*/
++
++#define HDMI_CORE_AV_BASE		0x900
++#ifndef HDMI_CORE_AV_HDMI_CTRL
++#define HDMI_CORE_AV_HDMI_CTRL		0x0BC
++#define HDMI_CORE_AV_PB_CTRL2		0x0FC
++#define	HDMI_CORE_AV_CP_BYTE1		0x37C
++#endif
++#define HDMI_CORE_AV_HDMI_CTRL__HDMI_MODE	0x01
++
++/***********************/
++/* HDCP DDC addresses  */
++/***********************/
++
++#define DDC_BKSV_ADDR		0x00
++#define DDC_Ri_ADDR		0x08
++#define DDC_AKSV_ADDR		0x10
++#define DDC_AN_ADDR		0x18
++#define DDC_V_ADDR		0x20
++#define DDC_BCAPS_ADDR		0x40
++#define DDC_BSTATUS_ADDR	0x41
++#define DDC_KSV_FIFO_ADDR	0x43
++
++#define DDC_BKSV_LEN		5
++#define DDC_Ri_LEN		2
++#define DDC_AKSV_LEN		5
++#define DDC_AN_LEN		8
++#define DDC_V_LEN		20
++#define DDC_BCAPS_LEN		1
++#define DDC_BSTATUS_LEN		2
++
++#define DDC_BIT_REPEATER	6
++
++#define DDC_BSTATUS0_MAX_DEVS	0x80
++#define DDC_BSTATUS0_DEV_COUNT	0x7F
++#define DDC_BSTATUS1_MAX_CASC	0x08
++
++/* Enum for repeating and non repeating sink */
++enum hdcp_repeater {
++	HDCP_RECEIVER = 0,
++	HDCP_REPEATER = 1
++};
++
++/* Ecryption state, turn on and off */
++enum encryption_state {
++	HDCP_ENC_OFF = 0x0,
++	HDCP_ENC_ON  = 0x1
++};
++
++/* Mute - used directly to enable / disable mute */
++enum av_mute {
++	AV_MUTE_SET = 0x01,
++	AV_MUTE_CLEAR = 0x10
++};
++
++/* Structure that defines the instace of library - Caller of this library
++	should initialize these members */
++struct hdcp_lib_inst {
++	int is_initialized;
++	void __iomem *hdmi_wp_base_addr;
++	void __iomem *deshdcp_base_addr;
++	int pending_disable;
++	spinlock_t spinlock;
++};
++
++/***************************/
++/* Function prototypes     */
++/***************************/
++
++/* 3DES */
++int hdcp_3des_load_key(uint32_t *deshdcp_encrypted_key);
++void hdcp_3des_encrypt_key(struct hdcp_encrypt_control *enc_ctrl,
++			   uint32_t out_key[DESHDCP_KEY_SIZE]);
++
++/* IP control */
++void hdcp_lib_read_bksv(u8 *ksv_data);
++int hdcp_lib_disable(void);
++int hdcp_lib_step1_start(void);
++int hdcp_lib_step1_r0_check(u8 *metadata);
++int hdcp_lib_step2(void);
++int hdcp_lib_irq(void);
++void hdcp_lib_auto_ri_check(bool state);
++void hdcp_lib_auto_bcaps_rdy_check(bool state);
++void hdcp_lib_set_av_mute(enum av_mute av_mute_state);
++void hdcp_lib_set_encryption(enum encryption_state enc_state);
++u8 hdcp_lib_check_repeater_bit_in_tx(void);
++int hdcp_lib_set_pending_disable(void);
++int hdcp_lib_clear_pending_disable(void);
++int hdcp_lib_get_sha_data(struct hdcp_sha_in *sha);
++
++/* Init library */
++int hdcp_lib_init(void);
++int hdcp_lib_de_init(void);
++
++#endif /* _HDCP_LIB_H_ */
++
++
++/***************************/
++/* Macros for accessing HW */
++/***************************/
++
++#define WR_REG_32(base, offset, val)	__raw_writel(val, base + offset)
++#define RD_REG_32(base, offset)		__raw_readl(base + offset)
++
++
++#undef FLD_MASK
++#define FLD_MASK(start, end)	(((1 << (start - end + 1)) - 1) << (end))
++#undef FLD_VAL
++#define FLD_VAL(val, start, end) (((val) << end) & FLD_MASK(start, end))
++#define FLD_GET(val, start, end) (((val) & FLD_MASK(start, end)) >> (end))
++#define FLD_MOD(orig, val, start, end) \
++	(((orig) & ~FLD_MASK(start, end)) | FLD_VAL(val, start, end))
++
++#define WR_FIELD_32(base, offset, start, end, val) \
++	WR_REG_32(base, offset, FLD_MOD(RD_REG_32(base, offset), val, \
++		  start, end))
++
++#define RD_FIELD_32(base, offset, start, end) \
++	((RD_REG_32(base, offset) & FLD_MASK(start, end)) >> (end))
++
++
+Index: kernel/linux-2.6.37-psp04.04.00.01/include/linux/ti81xx.h
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/include/linux/ti81xx.h	2014-08-07 17:02:50.985896709 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/include/linux/ti81xx.h	2014-08-07 17:02:50.941896711 -0600
+@@ -7,6 +7,7 @@
+ #include <linux/vps_cfgVipParser.h>
+ 
+ #define TVP7002_INST0 "tvp7002"
++#define TVP5150_INST0 "tvp5150"
+ #define TVP7002_INST1 "tvp7002"
+ #define TI81XXVIN_NUM_INSTANCES		4
+ 
+Index: kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/hdcp_ddc.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/hdcp_ddc.c	2014-08-07 17:02:50.945896711 -0600
+@@ -0,0 +1,319 @@
++/*
++ * hdcp_ddc.c
++ *
++ * HDCP interface DSS driver setting for TI's OMAP4 family of processor.
++ * Copyright (C) 2010-2011 Texas Instruments Incorporated - http://www.ti.com/
++ * Authors: Fabrice Olivero
++ *	Fabrice Olivero <f-olivero@ti.com>
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms of the GNU General Public License version 2 as published by
++ * the Free Software Foundation.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
++ * more details.
++ *
++ * You should have received a copy of the GNU General Public License along with
++ * this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++/* Rev history:
++ * Sujith Shivalingappa <sujith.s@ti.com> Added init routines
++ *				added to support TI814x and TI816x
++ */
++
++#include <linux/delay.h>
++#include <plat/hdcp_ddc.h>
++#include <plat/hdcp_lib.h>
++#include <plat/hdmi_lib.h>
++
++/* Globla variable defined in hdcp_lib.c, defines the required iomapped
++	regions, to execute DDC commands */
++extern struct hdcp_lib_inst hdcp;
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_suspend_resume_auto_ri
++ *-----------------------------------------------------------------------------
++ */
++static int hdcp_suspend_resume_auto_ri(enum ri_suspend_resume state)
++{
++	static u8 OldRiStat, OldRiCommand;
++	u8 TimeOut = 10;
++
++	/* Suspend Auto Ri in order to allow FW access MDDC bus.
++	 * Poll 0x72:0x26[0] for MDDC bus availability or timeout
++	 */
++
++	DBG("hdcp_suspend_resume_auto_ri() state=%s",
++		state == AUTO_RI_SUSPEND ? "SUSPEND" : "RESUME");
++
++	if (state == AUTO_RI_SUSPEND) {
++		/* Save original Auto Ri state */
++		OldRiCommand = RD_FIELD_32(hdcp.hdmi_wp_base_addr +
++					   HDMI_IP_CORE_SYSTEM,
++					   HDMI_IP_CORE_SYSTEM__RI_CMD, 0, 0);
++
++		/* Disable Auto Ri */
++		hdcp_lib_auto_ri_check(false);
++
++		/* Wait for HW to release MDDC bus */
++		/* TODO: while loop / timeout to be enhanced */
++		while (--TimeOut) {
++			if (!RD_FIELD_32(hdcp.hdmi_wp_base_addr +
++					 HDMI_IP_CORE_SYSTEM,
++					 HDMI_IP_CORE_SYSTEM__RI_STAT, 0, 0))
++				break;
++		}
++
++		/* MDDC bus not relinquished */
++		if (!TimeOut) {
++			printk(KERN_ERR "HDCP: Suspending Auto Ri failed !\n");
++			return -HDCP_DDC_ERROR;
++		}
++
++		OldRiStat = RD_FIELD_32(hdcp.hdmi_wp_base_addr +
++					HDMI_IP_CORE_SYSTEM,
++					HDMI_IP_CORE_SYSTEM__RI_STAT, 0, 0);
++	} else {
++		/* If Auto Ri was enabled before it was suspended */
++		if ((OldRiStat) && (OldRiCommand))
++			/* Re-enable Auto Ri */
++			hdcp_lib_auto_ri_check(false);
++	}
++
++	return HDCP_OK;
++}
++
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_start_ddc_transfer
++ *-----------------------------------------------------------------------------
++ */
++static int hdcp_start_ddc_transfer(mddc_type *mddc_cmd, u8 operation)
++{
++	u8 *cmd = (u8 *)mddc_cmd;
++	struct timeval t0, t1, t2;
++	u32 time_elapsed_ms = 0;
++	u32 i, size;
++	unsigned long flags;
++
++#ifdef _9032_AUTO_RI_
++	if (hdcp_suspend_resume_auto_ri(AUTO_RI_SUSPEND))
++		return -HDCP_DDC_ERROR;
++#endif
++
++	spin_lock_irqsave(&hdcp.spinlock, flags);
++
++	/* Abort Master DDC operation and Clear FIFO pointer */
++	WR_REG_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++		  HDMI_IP_CORE_SYSTEM__DDC_CMD, MASTER_CMD_CLEAR_FIFO);
++
++	/* Read to flush */
++	RD_REG_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++		  HDMI_IP_CORE_SYSTEM__DDC_CMD);
++
++	/* Sending DDC header, it'll clear DDC Status register too */
++	for (i = 0; i < 7; i++) {
++		WR_REG_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++			  HDMI_IP_CORE_SYSTEM__DDC_ADDR + i * sizeof(uint32_t),
++			  cmd[i]);
++
++		/* Read to flush */
++		RD_REG_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++			  HDMI_IP_CORE_SYSTEM__DDC_ADDR +
++			  i * sizeof(uint32_t));
++	}
++
++	spin_unlock_irqrestore(&hdcp.spinlock, flags);
++
++	do_gettimeofday(&t1);
++	memcpy(&t0, &t1, sizeof(t0));
++
++	i = 0;
++	size = mddc_cmd->nbytes_lsb + (mddc_cmd->nbytes_msb << 8);
++
++	while ((i < size) && (hdcp.pending_disable == 0)) {
++		if (operation == DDC_WRITE) {
++			/* Write data to DDC FIFO as long as it is NOT full */
++			if (RD_FIELD_32(hdcp.hdmi_wp_base_addr +
++				       HDMI_IP_CORE_SYSTEM,
++				       HDMI_IP_CORE_SYSTEM__DDC_STATUS, 3, 3)
++									== 0) {
++				WR_REG_32(hdcp.hdmi_wp_base_addr +
++					  HDMI_IP_CORE_SYSTEM,
++					  HDMI_IP_CORE_SYSTEM__DDC_DATA,
++					  mddc_cmd->pdata[i++]);
++				do_gettimeofday(&t1);
++			}
++		} else if (operation == DDC_READ) {
++			/* Read from DDC FIFO as long as it is NOT empty */
++			if (RD_FIELD_32(hdcp.hdmi_wp_base_addr +
++				       HDMI_IP_CORE_SYSTEM,
++				       HDMI_IP_CORE_SYSTEM__DDC_STATUS, 2, 2)
++									== 0) {
++				mddc_cmd->pdata[i++] =
++					RD_REG_32(hdcp.hdmi_wp_base_addr +
++					  HDMI_IP_CORE_SYSTEM,
++					  HDMI_IP_CORE_SYSTEM__DDC_DATA);
++				do_gettimeofday(&t1);
++			}
++		}
++
++		do_gettimeofday(&t2);
++		time_elapsed_ms = (t2.tv_sec - t1.tv_sec) * 1000 +
++				  (t2.tv_usec - t1.tv_usec) / 1000;
++
++		if (time_elapsed_ms > HDCP_DDC_TIMEOUT) {
++			DBG("DDC timeout - no data during %d ms - "
++			    "status=%02x %u",
++					HDCP_DDC_TIMEOUT,
++					RD_REG_32(hdcp.hdmi_wp_base_addr +
++					  HDMI_IP_CORE_SYSTEM,
++					  HDMI_IP_CORE_SYSTEM__DDC_STATUS),
++					jiffies_to_msecs(jiffies));
++			goto ddc_error;
++		}
++	}
++
++	if (hdcp.pending_disable)
++		goto ddc_abort;
++
++	/* Wait for the FIFO to be empty (end of transfer) */
++	while ((RD_REG_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++			   HDMI_IP_CORE_SYSTEM__DDC_STATUS) != 0x4) &&
++	       (hdcp.pending_disable == 0)) {
++		do_gettimeofday(&t2);
++		time_elapsed_ms = (t2.tv_sec - t1.tv_sec) * 1000 +
++				  (t2.tv_usec - t1.tv_usec) / 1000;
++
++		if (time_elapsed_ms > HDCP_DDC_TIMEOUT) {
++			DBG("DDC timeout - FIFO not getting empty - "
++			    "status=%02x",
++				RD_REG_32(hdcp.hdmi_wp_base_addr +
++					  HDMI_IP_CORE_SYSTEM,
++					  HDMI_IP_CORE_SYSTEM__DDC_STATUS));
++			goto ddc_error;
++		}
++	}
++
++	if (hdcp.pending_disable)
++		goto ddc_abort;
++
++	DBG("DDC transfer: bytes: %d time_us: %lu status: %x",
++		i,
++		(t2.tv_sec - t0.tv_sec) * 1000000 + (t2.tv_usec - t0.tv_usec),
++		RD_REG_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++			  HDMI_IP_CORE_SYSTEM__DDC_STATUS));
++
++#ifdef DDC_DBG
++	{
++		int k;
++		for (k = 0; k < i; k++)
++			printk(KERN_DEBUG "%02x ", mddc_cmd->pdata[k]);
++		printk(KERN_DEBUG "\n");
++	}
++#endif
++
++#ifdef _9032_AUTO_RI_
++	/* Re-enable Auto Ri */
++	if (hdcp_suspend_resume_auto_ri(AUTO_RI_RESUME))
++		return -HDCP_DDC_ERROR;
++#endif
++
++	return HDCP_OK;
++
++ddc_error:
++	hdcp_ddc_abort();
++	return -HDCP_DDC_ERROR;
++
++ddc_abort:
++	DBG("DDC transfer aborted - status=%02x",
++			RD_REG_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++				  HDMI_IP_CORE_SYSTEM__DDC_STATUS));
++
++	return HDCP_OK;
++}
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_ddc_operation
++ *-----------------------------------------------------------------------------
++ */
++static int hdcp_ddc_operation(u16 no_bytes, u8 addr, u8 *pdata,
++			      enum ddc_operation operation)
++{
++	mddc_type mddc;
++
++	mddc.slaveAddr	= HDCPRX_SLV;
++	mddc.offset	= 0;
++	mddc.regAddr	= addr;
++	mddc.nbytes_lsb	= no_bytes & 0xFF;
++	mddc.nbytes_msb	= (no_bytes & 0x300) >> 8;
++	mddc.dummy	= 0;
++	mddc.pdata	= pdata;
++
++	if (operation == DDC_READ)
++		mddc.cmd = MASTER_CMD_SEQ_RD;
++	else
++		mddc.cmd = MASTER_CMD_SEQ_WR;
++
++	DBG("DDC %s: offset=%02x len=%d %u", operation == DDC_READ ?
++					     "READ" : "WRITE",
++					     addr, no_bytes,
++					     jiffies_to_msecs(jiffies));
++
++	return hdcp_start_ddc_transfer(&mddc, operation);
++}
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_ddc_read
++ *-----------------------------------------------------------------------------
++ */
++int hdcp_ddc_read(u16 no_bytes, u8 addr, u8 *pdata)
++{
++	return hdcp_ddc_operation(no_bytes, addr, pdata, DDC_READ);
++}
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_ddc_write
++ *-----------------------------------------------------------------------------
++ */
++int hdcp_ddc_write(u16 no_bytes, u8 addr, u8 *pdata)
++{
++	return hdcp_ddc_operation(no_bytes, addr, pdata, DDC_WRITE);
++}
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_ddc_abort
++ *-----------------------------------------------------------------------------
++ */
++void hdcp_ddc_abort(void)
++{
++	unsigned long flags;
++
++	/* In case of I2C_NO_ACK error, do not abort DDC to avoid
++	 * DDC lockup
++	 */
++	if (RD_REG_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++		      HDMI_IP_CORE_SYSTEM__DDC_STATUS) & 0x20)
++		return;
++
++	spin_lock_irqsave(&hdcp.spinlock, flags);
++
++	/* Abort Master DDC operation and Clear FIFO pointer */
++	WR_REG_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++		  HDMI_IP_CORE_SYSTEM__DDC_CMD, MASTER_CMD_ABORT);
++
++	/* Read to flush */
++	RD_REG_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++		  HDMI_IP_CORE_SYSTEM__DDC_CMD);
++
++	WR_REG_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++		  HDMI_IP_CORE_SYSTEM__DDC_CMD, MASTER_CMD_CLEAR_FIFO);
++
++	/* Read to flush */
++	RD_REG_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++		  HDMI_IP_CORE_SYSTEM__DDC_CMD);
++
++	spin_unlock_irqrestore(&hdcp.spinlock, flags);
++}
+Index: kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/hdcp_lib.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/hdcp_lib.c	2014-08-07 17:02:50.945896711 -0600
+@@ -0,0 +1,1044 @@
++/*
++ * hdcp_lib.c
++ *
++ * HDCP interface DSS driver setting for TI's OMAP4 family of processor.
++ * Copyright (C) 2010-2011 Texas Instruments Incorporated - http://www.ti.com/
++ * Authors: Fabrice Olivero
++ *	Fabrice Olivero <f-olivero@ti.com>
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms of the GNU General Public License version 2 as published by
++ * the Free Software Foundation.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
++ * more details.
++ *
++ * You should have received a copy of the GNU General Public License along with
++ * this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++/* Rev history:
++ * Sujith Shivalingappa <sujith.s@ti.com> Added init routines
++ *				added to support TI814x and TI816x
++ */
++
++#include <linux/module.h>
++#include <plat/cpu.h>
++#include <linux/delay.h>
++#include <plat/hdcp_ddc.h>
++#include <linux/ti81xxhdmi.h>
++#include <plat/hdcp_lib.h>
++#include <plat/hdmi_lib.h>
++
++static void hdcp_lib_read_an(u8 *an);
++static void hdcp_lib_read_aksv(u8 *ksv_data);
++static void hdcp_lib_write_bksv(u8 *ksv_data);
++static void hdcp_lib_generate_an(u8 *an);
++static int hdcp_lib_r0_check(void);
++static int hdcp_lib_sha_bstatus(struct hdcp_sha_in *sha);
++static void hdcp_lib_set_repeater_bit_in_tx(enum hdcp_repeater rx_mode);
++static void hdcp_lib_toggle_repeater_bit_in_tx(void);
++static void hdcp_lib_read_m0(u8 *mo_tx);
++static int hdcp_lib_initiate_step1(void);
++static int hdcp_lib_check_ksv(uint8_t ksv[5]);
++static int is_cpu_ti81xx(void);
++
++#if 0
++#define HDCP_DBG(format, ...) \
++	printk(KERN_INFO "HDCP: " format, ## __VA_ARGS__)
++
++#else
++
++#define HDCP_DBG(format, ...)
++
++#endif
++
++/*-----------------------------------------------------------------------------
++ * Global variables
++ *	Instance specifics
++ *-----------------------------------------------------------------------------
++ */
++struct hdcp_lib_inst hdcp = {0x0, NULL, NULL, 0x0};
++static struct hdcp_sha_in sha_input;
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_lib_read_an
++ *-----------------------------------------------------------------------------
++ */
++static void hdcp_lib_read_an(u8 *an)
++{
++	u8 i;
++
++	for (i = 0; i < 8; i++) {
++		an[i] = (RD_REG_32(hdcp.hdmi_wp_base_addr +
++			 HDMI_IP_CORE_SYSTEM,
++			 HDMI_IP_CORE_SYSTEM__AN0 +
++			 i * sizeof(uint32_t))) & 0xFF;
++	}
++}
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_lib_read_aksv
++ *-----------------------------------------------------------------------------
++ */
++static void hdcp_lib_read_aksv(u8 *ksv_data)
++{
++	u8 i;
++	for (i = 0; i < 5; i++) {
++		ksv_data[i] = RD_REG_32(hdcp.hdmi_wp_base_addr +
++				   HDMI_IP_CORE_SYSTEM,
++				   HDMI_IP_CORE_SYSTEM__AKSV0 +
++				   i * sizeof(uint32_t));
++
++	}
++}
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_lib_write_bksv
++ *-----------------------------------------------------------------------------
++ */
++static void hdcp_lib_write_bksv(u8 *ksv_data)
++{
++	u8 i;
++	for (i = 0; i < 5; i++) {
++		WR_REG_32(hdcp.hdmi_wp_base_addr +
++			HDMI_IP_CORE_SYSTEM, HDMI_IP_CORE_SYSTEM__BKSV0 +
++			i * sizeof(uint32_t), ksv_data[i]);
++	}
++}
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_lib_generate_an
++ *-----------------------------------------------------------------------------
++ */
++static void hdcp_lib_generate_an(u8 *an)
++{
++	/* Generate An using HDCP HW */
++	HDCP_DBG("hdcp_lib_generate_an()");
++
++	/* Start AN Gen */
++	WR_FIELD_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++		    HDMI_IP_CORE_SYSTEM__HDCP_CTRL, 3, 3, 0);
++
++	/* Delay of 10 ms */
++	mdelay(10);
++
++	/* Stop AN Gen */
++	WR_FIELD_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++		    HDMI_IP_CORE_SYSTEM__HDCP_CTRL, 3, 3, 1);
++
++	/* Must set 0x72:0x0F[3] twice to guarantee that takes effect */
++	WR_FIELD_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++		    HDMI_IP_CORE_SYSTEM__HDCP_CTRL, 3, 3, 1);
++
++	hdcp_lib_read_an(an);
++
++	HDCP_DBG("AN: %x %x %x %x %x %x %x %x", an[0], an[1], an[2], an[3],
++					   an[4], an[5], an[6], an[7]);
++}
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_lib_r0_check
++ *-----------------------------------------------------------------------------
++ */
++static int hdcp_lib_r0_check(void)
++{
++	u8 ro_rx[2], ro_tx[2];
++
++	HDCP_DBG("hdcp_lib_r0_check()");
++
++	/* DDC: Read Ri' from RX */
++	if (hdcp_ddc_read(DDC_Ri_LEN, DDC_Ri_ADDR , (u8 *)&ro_rx))
++		return -HDCP_DDC_ERROR;
++
++	/* Read Ri in HDCP IP */
++	ro_tx[0] = RD_REG_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++			     HDMI_IP_CORE_SYSTEM__R1) & 0xFF;
++
++	ro_tx[1] = RD_REG_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++			     HDMI_IP_CORE_SYSTEM__R2) & 0xFF;
++
++	/* Compare values */
++	HDCP_DBG("ROTX: %x%x RORX:%x%x", ro_tx[0], ro_tx[1], ro_rx[0], ro_rx[1]);
++
++	if ((ro_rx[0] == ro_tx[0]) && (ro_rx[1] == ro_tx[1]))
++		return HDCP_OK;
++	else
++		return -HDCP_AUTH_FAILURE;
++}
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_lib_sha_bstatus
++ *-----------------------------------------------------------------------------
++ */
++static int hdcp_lib_sha_bstatus(struct hdcp_sha_in *sha)
++{
++	u8 data[2];
++
++	if (hdcp_ddc_read(DDC_BSTATUS_LEN, DDC_BSTATUS_ADDR, data))
++		return -HDCP_DDC_ERROR;
++
++	sha->data[sha->byte_counter++] = data[0];
++	sha->data[sha->byte_counter++] = data[1];
++
++	return HDCP_OK;
++}
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_lib_set_repeater_bit_in_tx
++ *-----------------------------------------------------------------------------
++ */
++static void hdcp_lib_set_repeater_bit_in_tx(enum hdcp_repeater rx_mode)
++{
++	HDCP_DBG("hdcp_lib_set_repeater_bit_in_tx() value=%d", rx_mode);
++
++	WR_FIELD_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++		HDMI_IP_CORE_SYSTEM__HDCP_CTRL, 4, 4, rx_mode);
++}
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_lib_toggle_repeater_bit_in_tx
++ *-----------------------------------------------------------------------------
++ */
++static void hdcp_lib_toggle_repeater_bit_in_tx(void)
++{
++	if (hdcp_lib_check_repeater_bit_in_tx())
++		hdcp_lib_set_repeater_bit_in_tx(HDCP_RECEIVER);
++	else
++		hdcp_lib_set_repeater_bit_in_tx(HDCP_REPEATER);
++}
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_lib_read_m0
++ *-----------------------------------------------------------------------------
++ */
++static void hdcp_lib_read_m0(u8 *mo_tx)
++{
++	int i;
++
++	/* Enable M0 reading */
++	WR_FIELD_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++		    HDMI_IP_CORE_SYSTEM__SHA_CTRL, 3, 3, 1);
++
++        for(i = 0; i < 8; i++) {
++                mo_tx[i] = (RD_REG_32(hdcp.hdmi_wp_base_addr +
++				      HDMI_IP_CORE_SYSTEM,
++				      HDMI_IP_CORE_SYSTEM__AN0 +
++				      i * sizeof(uint32_t))) & 0xFF;
++        }
++
++	HDCP_DBG("MO: %02x %02x %02x %02x %02x %02x %02x %02x\n",
++		mo_tx[0],
++		mo_tx[1],
++		mo_tx[2],
++		mo_tx[3],
++		mo_tx[4],
++		mo_tx[5],
++		mo_tx[6],
++		mo_tx[7]);
++
++	/* Disable M0 reading */
++	WR_FIELD_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++		    HDMI_IP_CORE_SYSTEM__SHA_CTRL, 3, 3, 0);
++
++	return;
++}
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_lib_initiate_step1
++ *-----------------------------------------------------------------------------
++ */
++static int hdcp_lib_initiate_step1(void)
++{
++	/* HDCP authentication steps:
++	 *   1) Read Bksv - check validity (is HDMI Rx supporting HDCP ?)
++	 *   2) Initializes HDCP (CP reset release)
++	 *   3) Read Bcaps - is HDMI Rx a repeater ?
++	 *   *** First part authentication ***
++	 *   4) Read Bksv - check validity (is HDMI Rx supporting HDCP ?)
++	 *   5) Generates An
++	 *   6) DDC: Writes An, Aksv
++	 *   7) DDC: Write Bksv
++	 */
++	uint8_t an_ksv_data[8], an_bksv_data[8];
++	uint8_t rx_type;
++
++	HDCP_DBG("hdcp_lib_initiate_step1()\n");
++
++	/* DDC: Read BKSV from RX */
++	if (hdcp_ddc_read(DDC_BKSV_LEN, DDC_BKSV_ADDR , an_ksv_data))
++		return -HDCP_DDC_ERROR;
++
++	if (hdcp.pending_disable)
++		return -HDCP_CANCELLED_AUTH;
++
++	HDCP_DBG("BKSV: %02x %02x %02x %02x %02x", an_ksv_data[0],
++					an_ksv_data[1], an_ksv_data[2],
++					an_ksv_data[3], an_ksv_data[4]);
++
++	if (hdcp_lib_check_ksv(an_ksv_data)) {
++		HDCP_DBG("BKSV error (number of 0 and 1)");
++		return -HDCP_AUTH_FAILURE;
++	}
++
++	/* TODO: Need to confirm it is required */
++#ifndef _9032_AN_STOP_FIX_
++	hdcp_lib_toggle_repeater_bit_in_tx();
++#endif
++
++	/* Release CP reset bit */
++	WR_FIELD_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++		    HDMI_IP_CORE_SYSTEM__HDCP_CTRL, 2, 2, 1);
++
++	/* Read BCAPS to determine if HDCP RX is a repeater */
++	if (hdcp_ddc_read(DDC_BCAPS_LEN, DDC_BCAPS_ADDR, &rx_type))
++		return -HDCP_DDC_ERROR;
++
++	if (hdcp.pending_disable)
++		return -HDCP_CANCELLED_AUTH;
++
++	rx_type = FLD_GET(rx_type, DDC_BIT_REPEATER, DDC_BIT_REPEATER);
++
++	/* Set repeater bit in HDCP CTRL */
++	if (rx_type == 1) {
++		hdcp_lib_set_repeater_bit_in_tx(HDCP_REPEATER);
++		HDCP_DBG("HDCP RX is a repeater");
++	} else {
++		hdcp_lib_set_repeater_bit_in_tx(HDCP_RECEIVER);
++		HDCP_DBG("HDCP RX is a receiver");
++	}
++
++/* Power debug code */
++#ifdef POWER_TRANSITION_DBG
++	printk(KERN_INFO "\n**************************\n"
++			 "AUTHENTICATION: WAIT FOR DSS TRANSITION\n"
++			 "*************************\n");
++	mdelay(10000);
++	printk(KERN_INFO "\n**************************\n"
++			 "DONE\n"
++			 "*************************\n");
++#endif
++	/* DDC: Read BKSV from RX */
++	if (hdcp_ddc_read(DDC_BKSV_LEN, DDC_BKSV_ADDR , an_bksv_data))
++		return -HDCP_DDC_ERROR;
++
++	/* Generate An */
++	hdcp_lib_generate_an(an_ksv_data);
++
++	/* Authentication 1st step initiated HERE */
++
++	/* DDC: Write An */
++	if (hdcp_ddc_write(DDC_AN_LEN, DDC_AN_ADDR , an_ksv_data))
++		return -HDCP_DDC_ERROR;
++
++	if (hdcp.pending_disable)
++		return -HDCP_CANCELLED_AUTH;
++
++	/* Read AKSV from IP: (HDCP AKSV register) */
++	hdcp_lib_read_aksv(an_ksv_data);
++
++	HDCP_DBG("AKSV: %02x %02x %02x %02x %02x", an_ksv_data[0],
++					an_ksv_data[1], an_ksv_data[2],
++					an_ksv_data[3], an_ksv_data[4]);
++
++	if (hdcp_lib_check_ksv(an_ksv_data)) {
++		printk(KERN_INFO "HDCP: AKSV error (number of 0 and 1)\n");
++		return -HDCP_AKSV_ERROR;
++	}
++
++	if (hdcp.pending_disable)
++		return -HDCP_CANCELLED_AUTH;
++
++	/* DDC: Write AKSV */
++	if (hdcp_ddc_write(DDC_AKSV_LEN, DDC_AKSV_ADDR, an_ksv_data))
++		return -HDCP_DDC_ERROR;
++
++	if (hdcp.pending_disable)
++		return -HDCP_CANCELLED_AUTH;
++
++	/* Write Bksv to IP */
++	hdcp_lib_write_bksv(an_bksv_data);
++
++	/* Check IP BKSV error */
++	if (RD_FIELD_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++			HDMI_IP_CORE_SYSTEM__HDCP_CTRL, 5, 5))
++		return -HDCP_AUTH_FAILURE;
++
++	/* Here BSKV should be checked against revokation list */
++
++	return HDCP_OK;
++}
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_lib_check_ksv
++ *-----------------------------------------------------------------------------
++ */
++static int hdcp_lib_check_ksv(uint8_t ksv[5])
++{
++	int i, j;
++	int zero = 0, one = 0;
++
++	for (i = 0; i < 5; i++) {
++		/* Count number of zero / one */
++		for (j = 0; j < 8; j++) {
++			if (ksv[i] & (0x01 << j))
++				one++;
++			else
++				zero++;
++		}
++	}
++
++	if (one == zero)
++		return 0;
++	else
++		return -1;
++}
++
++/*-----------------------------------------------------------------------------
++ * Function: is_cpu_ti81xx
++ *-----------------------------------------------------------------------------
++ */
++static int is_cpu_ti81xx(void)
++{
++	if (cpu_is_ti814x() || cpu_is_ti816x())
++		return 1;
++	else
++		return -1;
++}
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_lib_read_bksv
++ *-----------------------------------------------------------------------------
++ */
++void hdcp_lib_read_bksv(u8 *ksv_data)
++{
++	u8 i;
++	for (i = 0; i < 5; i++) {
++		ksv_data[i] = RD_REG_32(hdcp.hdmi_wp_base_addr +
++			HDMI_IP_CORE_SYSTEM, HDMI_IP_CORE_SYSTEM__BKSV0 +
++			i * sizeof(uint32_t));
++	}
++}
++
++EXPORT_SYMBOL(hdcp_lib_read_bksv);
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_3des_load_key
++ *-----------------------------------------------------------------------------
++ */
++int hdcp_3des_load_key(uint32_t *deshdcp_encrypted_key)
++{
++	int counter = 0, status = HDCP_OK;
++
++	if (is_cpu_ti81xx())
++		return 0;
++
++	HDCP_DBG("Loading HDCP keys...");
++
++	/* Set decryption mode in DES control register */
++	WR_FIELD_32(hdcp.deshdcp_base_addr,
++		    DESHDCP__DHDCP_CTRL,
++		    DESHDCP__DHDCP_CTRL__DIRECTION_POS_F,
++		    DESHDCP__DHDCP_CTRL__DIRECTION_POS_L,
++		    0x0);
++
++	/* Write encrypted data */
++	while (counter < DESHDCP_KEY_SIZE) {
++		/* Fill Data registers */
++		WR_REG_32(hdcp.deshdcp_base_addr, DESHDCP__DHDCP_DATA_L,
++			  deshdcp_encrypted_key[counter]);
++		WR_REG_32(hdcp.deshdcp_base_addr, DESHDCP__DHDCP_DATA_H,
++			  deshdcp_encrypted_key[counter + 1]);
++
++		/* Wait for output bit at '1' */
++		while (RD_FIELD_32(hdcp.deshdcp_base_addr,
++				    DESHDCP__DHDCP_CTRL,
++				    DESHDCP__DHDCP_CTRL__OUTPUT_READY_POS_F,
++				    DESHDCP__DHDCP_CTRL__OUTPUT_READY_POS_L
++			) != 0x1)
++			;
++
++		/* Dummy read (indeed data are transfered directly into
++		 * key memory)
++		 */
++		if (RD_REG_32(hdcp.deshdcp_base_addr, DESHDCP__DHDCP_DATA_L) !=
++									0x0) {
++			status = -HDCP_3DES_ERROR;
++			printk(KERN_ERR "HDCP: DESHDCP dummy read error\n");
++		}
++		if (RD_REG_32(hdcp.deshdcp_base_addr, DESHDCP__DHDCP_DATA_H) !=
++									0x0) {
++			status = -HDCP_3DES_ERROR;
++			printk(KERN_ERR "HDCP: DESHDCP dummy read error\n");
++		}
++
++		counter += 2;
++	}
++
++	return status;
++}
++
++EXPORT_SYMBOL(hdcp_3des_load_key);
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_3des_encrypt_key
++ *-----------------------------------------------------------------------------
++ */
++void hdcp_3des_encrypt_key(struct hdcp_encrypt_control *enc_ctrl,
++			   uint32_t out_key[DESHDCP_KEY_SIZE])
++{
++	int counter = 0;
++
++	HDCP_DBG("Encrypting HDCP keys...");
++
++	if (is_cpu_ti81xx())
++		return ;
++
++	/* Reset encrypted key array */
++	for (counter = 0; counter < DESHDCP_KEY_SIZE; counter++)
++		out_key[counter] = 0;
++
++	/* Set encryption mode in DES control register */
++	WR_FIELD_32(hdcp.deshdcp_base_addr,
++		    DESHDCP__DHDCP_CTRL,
++		    DESHDCP__DHDCP_CTRL__DIRECTION_POS_F,
++		    DESHDCP__DHDCP_CTRL__DIRECTION_POS_L,
++		    0x1);
++
++	/* Write raw data and read encrypted data */
++	counter = 0;
++
++#ifdef POWER_TRANSITION_DBG
++	printk(KERN_ERR "\n**************************\n"
++			"ENCRYPTION: WAIT FOR DSS TRANSITION\n"
++			"*************************\n");
++	mdelay(10000);
++	printk(KER_INFO "\n**************************\n"
++			"DONE\n"
++			"*************************\n");
++#endif
++
++	while (counter < DESHDCP_KEY_SIZE) {
++		/* Fill Data registers */
++		WR_REG_32(hdcp.deshdcp_base_addr, DESHDCP__DHDCP_DATA_L,
++			  enc_ctrl->in_key[counter]);
++		WR_REG_32(hdcp.deshdcp_base_addr, DESHDCP__DHDCP_DATA_H,
++			  enc_ctrl->in_key[counter + 1]);
++
++		/* Wait for output bit at '1' */
++		while (RD_FIELD_32(hdcp.deshdcp_base_addr,
++				    DESHDCP__DHDCP_CTRL,
++				    DESHDCP__DHDCP_CTRL__OUTPUT_READY_POS_F,
++				    DESHDCP__DHDCP_CTRL__OUTPUT_READY_POS_L
++			) != 0x1)
++			;
++
++		/* Read enrypted data */
++		out_key[counter]     = RD_REG_32(hdcp.deshdcp_base_addr,
++						 DESHDCP__DHDCP_DATA_L);
++		out_key[counter + 1] = RD_REG_32(hdcp.deshdcp_base_addr,
++						 DESHDCP__DHDCP_DATA_H);
++
++		counter += 2;
++	}
++}
++
++EXPORT_SYMBOL(hdcp_3des_encrypt_key);
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_lib_disable
++ *-----------------------------------------------------------------------------
++ */
++int hdcp_lib_disable()
++{
++	HDCP_DBG("hdcp_lib_disable() %u", jiffies_to_msecs(jiffies));
++
++	/* CP reset */
++	WR_FIELD_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++		    HDMI_IP_CORE_SYSTEM__HDCP_CTRL, 2, 2, 0);
++
++	/* Clear AV mute in case it was set */
++	hdcp_lib_set_av_mute(AV_MUTE_CLEAR);
++
++	return HDCP_OK;
++}
++
++EXPORT_SYMBOL(hdcp_lib_disable);
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_lib_set_encryption
++ *-----------------------------------------------------------------------------
++ */
++void hdcp_lib_set_encryption(enum encryption_state enc_state)
++{
++	unsigned long flags;
++
++	spin_lock_irqsave(&hdcp.spinlock, flags);
++
++	/* HDCP_CTRL::ENC_EN set/clear */
++	WR_FIELD_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++		    HDMI_IP_CORE_SYSTEM__HDCP_CTRL, 0, 0, enc_state);
++
++	/* Read to flush */
++	RD_REG_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++		    HDMI_IP_CORE_SYSTEM__HDCP_CTRL);
++
++	spin_unlock_irqrestore(&hdcp.spinlock, flags);
++
++	HDCP_DBG("HDCP: Encryption state changed: %s hdcp_ctrl: %02x",
++				enc_state == HDCP_ENC_OFF ? "OFF" : "ON",
++				RD_REG_32(hdcp.hdmi_wp_base_addr +
++					  HDMI_IP_CORE_SYSTEM,
++					  HDMI_IP_CORE_SYSTEM__HDCP_CTRL));
++
++}
++
++EXPORT_SYMBOL(hdcp_lib_set_encryption);
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_lib_set_av_mute
++ *-----------------------------------------------------------------------------
++ */
++void hdcp_lib_set_av_mute(enum av_mute av_mute_state)
++{
++	unsigned long flags;
++
++	HDCP_DBG("hdcp_lib_set_av_mute() av_mute=%d", av_mute_state);
++
++
++	spin_lock_irqsave(&hdcp.spinlock, flags);
++
++	{
++		u8 RegVal, TimeOutCount = 64;
++
++		RegVal = RD_REG_32(hdcp.hdmi_wp_base_addr + HDMI_CORE_AV_BASE,
++				   HDMI_CORE_AV_PB_CTRL2);
++
++		/* PRguide-GPC: To change the content of the CP_BYTE1 register,
++		 * CP_EN must be zero
++		 * set PB_CTRL2 :: CP_RPT = 0
++		 */
++		WR_FIELD_32(hdcp.hdmi_wp_base_addr + HDMI_CORE_AV_BASE,
++			    HDMI_CORE_AV_PB_CTRL2, 2, 2, 0);
++
++		/* Set/clear AV mute state */
++		WR_REG_32(hdcp.hdmi_wp_base_addr + HDMI_CORE_AV_BASE,
++			  HDMI_CORE_AV_CP_BYTE1, av_mute_state);
++
++		/* FIXME: This loop should be removed */
++		while (TimeOutCount--) {
++			/* Continue in this loop till CP_EN becomes 0,
++			 * prior to TimeOutCount becoming 0 */
++			if (!RD_FIELD_32(hdcp.hdmi_wp_base_addr +
++					 HDMI_CORE_AV_BASE,
++					 HDMI_CORE_AV_PB_CTRL2, 3, 3))
++				break;
++		}
++
++		HDCP_DBG("    timeoutcount=%d", TimeOutCount);
++
++		/* FIXME: why is this if condition required?, according to prg,
++		 * this shall be unconditioanlly */
++		if (TimeOutCount) {
++			/* set PB_CTRL2 :: CP_EN = 1 & CP_RPT = 1 */
++			RegVal = FLD_MOD(RegVal, 0x3, 3, 2);
++
++			WR_REG_32(hdcp.hdmi_wp_base_addr + HDMI_CORE_AV_BASE,
++				  HDMI_CORE_AV_PB_CTRL2, RegVal);
++		}
++	}
++
++	spin_unlock_irqrestore(&hdcp.spinlock, flags);
++}
++
++EXPORT_SYMBOL(hdcp_lib_set_av_mute);
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_lib_check_repeater_bit_in_tx
++ *-----------------------------------------------------------------------------
++ */
++u8 hdcp_lib_check_repeater_bit_in_tx(void)
++{
++	return RD_FIELD_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++			   HDMI_IP_CORE_SYSTEM__HDCP_CTRL, 4, 4);
++}
++
++EXPORT_SYMBOL(hdcp_lib_check_repeater_bit_in_tx);
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_lib_auto_ri_check
++ *-----------------------------------------------------------------------------
++ */
++void hdcp_lib_auto_ri_check(bool state)
++{
++	u8 reg_val;
++	unsigned long flags;
++
++	HDCP_DBG("hdcp_lib_auto_ri_check() state=%s",
++		state == true ? "ON" : "OFF");
++
++	spin_lock_irqsave(&hdcp.spinlock, flags);
++
++	reg_val = RD_REG_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++			    HDMI_IP_CORE_SYSTEM__INT_UNMASK3);
++
++	reg_val = (state == true) ? (reg_val | 0xB0) : (reg_val & ~0xB0);
++
++	/* Turn on/off the following Auto Ri interrupts */
++	WR_REG_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++		  HDMI_IP_CORE_SYSTEM__INT_UNMASK3, reg_val);
++
++	/* Enable/Disable Ri */
++	WR_FIELD_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++		    HDMI_IP_CORE_SYSTEM__RI_CMD, 0, 0,
++		    ((state == true) ? 1 : 0));
++
++	/* Read to flush */
++	RD_REG_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++		    HDMI_IP_CORE_SYSTEM__RI_CMD);
++
++	spin_unlock_irqrestore(&hdcp.spinlock, flags);
++}
++
++EXPORT_SYMBOL(hdcp_lib_auto_ri_check);
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_lib_auto_bcaps_rdy_check
++ *-----------------------------------------------------------------------------
++ */
++void hdcp_lib_auto_bcaps_rdy_check(bool state)
++{
++	u8 reg_val;
++	unsigned long flags;
++
++	HDCP_DBG("hdcp_lib_auto_bcaps_rdy_check() state=%s",
++		state == true ? "ON" : "OFF");
++
++	spin_lock_irqsave(&hdcp.spinlock, flags);
++
++	/* Enable KSV_READY / BACP_DONE interrupt */
++	WR_FIELD_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++		    HDMI_IP_CORE_SYSTEM__INT_UNMASK2, 7, 7,
++		    ((state == true) ? 1 : 0));
++
++	/* Enable/Disable Ri  & Bcap */
++	reg_val = RD_REG_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++			    HDMI_IP_CORE_SYSTEM__RI_CMD);
++
++	/* Enable RI_EN & BCAP_EN OR disable BCAP_EN */
++	reg_val = (state == true) ? (reg_val | 0x3) : (reg_val & ~0x2);
++
++	WR_REG_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++		  HDMI_IP_CORE_SYSTEM__RI_CMD, reg_val);
++
++	/* Read to flush */
++	RD_REG_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
++		  HDMI_IP_CORE_SYSTEM__RI_CMD);
++
++	spin_unlock_irqrestore(&hdcp.spinlock, flags);
++
++	HDCP_DBG("hdcp_lib_auto_bcaps_rdy_check() Done\n");
++}
++
++EXPORT_SYMBOL(hdcp_lib_auto_bcaps_rdy_check);
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_lib_step1_start
++ *-----------------------------------------------------------------------------
++ */
++int hdcp_lib_step1_start(void)
++{
++	u8 hdmi_mode;
++	int status;
++
++	HDCP_DBG("hdcp_lib_step1_start() %u", jiffies_to_msecs(jiffies));
++
++	/* Check if mode is HDMI or DVI */
++	hdmi_mode = RD_REG_32(hdcp.hdmi_wp_base_addr + HDMI_CORE_AV_BASE,
++			      HDMI_CORE_AV_HDMI_CTRL) &
++			      HDMI_CORE_AV_HDMI_CTRL__HDMI_MODE;
++
++	HDCP_DBG("RX mode: %s", hdmi_mode ? "HDMI" : "DVI");
++
++	/* Set AV Mute */
++	hdcp_lib_set_av_mute(AV_MUTE_SET);
++
++	/* Must turn encryption off when AVMUTE */
++	hdcp_lib_set_encryption(HDCP_ENC_OFF);
++
++	status = hdcp_lib_initiate_step1();
++
++	if (hdcp.pending_disable)
++		return -HDCP_CANCELLED_AUTH;
++	else
++		return status;
++}
++
++EXPORT_SYMBOL(hdcp_lib_step1_start);
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_lib_step1_r0_check
++ *-----------------------------------------------------------------------------
++ */
++int hdcp_lib_step1_r0_check(u8 *metadata)
++{
++	int status = HDCP_OK;
++
++	/* HDCP authentication steps:
++	 *   1) DDC: Read M0'
++	 *   2) Compare M0 and M0'
++	 *   if Rx is a receiver: switch to authentication step 3
++	 *   3) Enable encryption / auto Ri check / disable AV mute
++	 *   if Rx is a repeater: switch to authentication step 2
++	 *   3) Get M0 from HDMI IP and store it for further processing (V)
++	 *   4) Enable encryption / auto Ri check / auto BCAPS RDY polling
++	 *      Disable AV mute
++	 */
++
++	HDCP_DBG("hdcp_lib_step1_r0_check() %u", jiffies_to_msecs(jiffies));
++
++	status = hdcp_lib_r0_check();
++	if (status < 0)
++		return status;
++
++	/* Authentication 1st step done */
++
++	/* Now prepare 2nd step authentication in case of RX repeater and
++	 * enable encryption / Ri check
++	 */
++
++	if (hdcp.pending_disable)
++		return -HDCP_CANCELLED_AUTH;
++
++	if (hdcp_lib_check_repeater_bit_in_tx()) {
++
++		hdcp_lib_read_m0(metadata);
++
++		HDCP_DBG("hdcp_lib_set_encryption() %u",
++			jiffies_to_msecs(jiffies));
++
++		/* Enable encryption */
++		hdcp_lib_set_encryption(HDCP_ENC_ON);
++
++#ifdef _9032_AUTO_RI_
++		/* Enable Auto Ri */
++		hdcp_lib_auto_ri_check(true);
++#endif
++
++#ifdef _9032_BCAP_
++		/* Enable automatic BCAPS polling */
++		hdcp_lib_auto_bcaps_rdy_check(true);
++#endif
++
++		/* Now, IP waiting for BCAPS ready bit */
++	} else {
++		/* Receiver: enable encryption and auto Ri check */
++		hdcp_lib_set_encryption(HDCP_ENC_ON);
++
++#ifdef _9032_AUTO_RI_
++		/* Enable Auto Ri */
++		hdcp_lib_auto_ri_check(true);
++#endif
++
++	}
++
++	/* Clear AV mute */
++	hdcp_lib_set_av_mute(AV_MUTE_CLEAR);
++
++	return HDCP_OK;
++}
++
++EXPORT_SYMBOL(hdcp_lib_step1_r0_check);
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_lib_step2
++ *-----------------------------------------------------------------------------
++ */
++int hdcp_lib_step2(void)
++{
++	/* HDCP authentication steps:
++	 *   1) Disable auto Ri check
++	 *   2) DDC: read BStatus (nb of devices, MAX_DEV
++	 */
++
++	u8 bstatus[2];
++	int status = HDCP_OK;
++
++	HDCP_DBG("hdcp_lib_step2() %u", jiffies_to_msecs(jiffies));
++
++#ifdef _9032_AUTO_RI_
++	/* Disable Auto Ri */
++	hdcp_lib_auto_ri_check(false);
++#endif
++
++	/* DDC: Read Bstatus (1st byte) from Rx */
++	if (hdcp_ddc_read(DDC_BSTATUS_LEN, DDC_BSTATUS_ADDR, bstatus))
++		return -HDCP_DDC_ERROR;
++
++	/* Get KSV list size */
++	HDCP_DBG("KSV list size: %d", bstatus[0] & DDC_BSTATUS0_DEV_COUNT);
++	sha_input.byte_counter = (bstatus[0] & DDC_BSTATUS0_DEV_COUNT) * 5;
++
++	/* Check BStatus topology errors */
++	if (bstatus[0] & DDC_BSTATUS0_MAX_DEVS) {
++		HDCP_DBG("MAX_DEV_EXCEEDED set");
++		return -HDCP_AUTH_FAILURE;
++	}
++
++	if (bstatus[1] & DDC_BSTATUS1_MAX_CASC) {
++		HDCP_DBG("MAX_CASCADE_EXCEEDED set");
++		return -HDCP_AUTH_FAILURE;
++	}
++
++	HDCP_DBG("Retrieving KSV list...");
++
++	/* Clear all SHA input data */
++	/* TODO: should be done earlier at HDCP init */
++	memset(sha_input.data, 0, MAX_SHA_DATA_SIZE);
++
++	if (hdcp.pending_disable)
++		return -HDCP_CANCELLED_AUTH;
++
++	/* DDC: read KSV list */
++	if (sha_input.byte_counter) {
++		if (hdcp_ddc_read(sha_input.byte_counter, DDC_KSV_FIFO_ADDR,
++				  (u8 *)&sha_input.data))
++			return -HDCP_DDC_ERROR;
++	}
++
++	/* Read and add Bstatus */
++	if (hdcp_lib_sha_bstatus(&sha_input))
++		return -HDCP_DDC_ERROR;
++
++	if (hdcp.pending_disable)
++		return -HDCP_CANCELLED_AUTH;
++
++	/* Read V' */
++	if (hdcp_ddc_read(DDC_V_LEN, DDC_V_ADDR, sha_input.vprime))
++		return -HDCP_DDC_ERROR;
++
++	if (hdcp.pending_disable)
++		return -HDCP_CANCELLED_AUTH;
++
++	return status;
++}
++
++EXPORT_SYMBOL(hdcp_lib_step2);
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_lib_init, initialize the library.
++ *-----------------------------------------------------------------------------
++ */
++int hdcp_lib_init(void)
++{
++	int r = HDCP_DRIVER_ERROR;
++
++	if (hdcp.is_initialized == 0x0){
++
++		if (cpu_is_ti814x() || cpu_is_ti816x()) {
++			hdcp.hdmi_wp_base_addr =
++				ioremap(TI81xx_HDMI_WP, 0x1000);
++		} else {
++			hdcp.hdmi_wp_base_addr = ioremap(HDMI_WP, 0x1000);
++		}
++
++		if (!hdcp.hdmi_wp_base_addr) {
++			printk("can't ioremap WP\n");
++			return -ENOMEM;
++		}
++
++		hdcp.deshdcp_base_addr = ioremap(DSS_SS_FROM_L3__DESHDCP, 0x34);
++		if (!hdcp.deshdcp_base_addr) {
++			printk(KERN_ERR "HDCP: DESHDCP IOremap error\n");
++			iounmap(hdcp.hdmi_wp_base_addr);
++			return -ENOMEM;
++		}
++
++		spin_lock_init(&hdcp.spinlock);
++
++		hdcp.pending_disable = 0;
++
++		hdcp.is_initialized = 1;
++
++		r = HDCP_OK;
++	}
++
++	return r;
++}
++
++EXPORT_SYMBOL(hdcp_lib_init);
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_lib_de_init, De initialize the library.
++ *-----------------------------------------------------------------------------
++ */
++int hdcp_lib_de_init(void)
++{
++	int r = HDCP_DRIVER_ERROR;
++	if (hdcp.is_initialized != 0x0){
++
++		iounmap(hdcp.hdmi_wp_base_addr);
++
++		iounmap(hdcp.deshdcp_base_addr);
++
++		hdcp.pending_disable = 0;
++
++		hdcp.is_initialized = 0x0;
++
++		r = HDCP_OK;
++	}
++
++	return r;
++}
++
++EXPORT_SYMBOL(hdcp_lib_de_init);
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_lib_set_pending_disable
++ *-----------------------------------------------------------------------------
++ */
++int hdcp_lib_set_pending_disable(void)
++{
++	if (hdcp.is_initialized != 0x0){
++
++		hdcp.pending_disable = 1;
++		return 0;
++	}
++	return -1;
++}
++
++EXPORT_SYMBOL(hdcp_lib_set_pending_disable);
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_lib_clear_pending_disable
++ *-----------------------------------------------------------------------------
++ */
++int hdcp_lib_clear_pending_disable(void)
++{
++	if (hdcp.is_initialized != 0x0){
++
++		hdcp.pending_disable = 0;
++		return 0;
++	}
++	return -1;
++}
++
++EXPORT_SYMBOL(hdcp_lib_clear_pending_disable);
++
++/*-----------------------------------------------------------------------------
++ * Function: hdcp_lib_get_sha_data
++ *-----------------------------------------------------------------------------
++ */
++int hdcp_lib_get_sha_data(struct hdcp_sha_in *sha)
++{
++	int r = -1;
++
++	if (sha){
++		/* TODO Check if sha data is ready */
++		r = HDCP_OK;
++		memcpy(sha, &sha_input, sizeof(struct hdcp_sha_in));
++	}
++	return r;
++}
++
++EXPORT_SYMBOL(hdcp_lib_get_sha_data);
+Index: kernel/linux-2.6.37-psp04.04.00.01/drivers/mmc/core/core.c
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/drivers/mmc/core/core.c	2014-08-07 17:02:50.985896709 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/drivers/mmc/core/core.c	2014-08-07 17:02:50.945896711 -0600
+@@ -100,13 +100,13 @@
+ 			cmd->retries = 0;
+ 	}
+ 
+-	if (err && cmd->retries) {
+-		pr_debug("%s: req failed (CMD%u): %d, retrying...\n",
+-			mmc_hostname(host), cmd->opcode, err);
+-
+-		cmd->retries--;
+-		cmd->error = 0;
+-		host->ops->request(host, mrq);
++	if (err && cmd->retries && !mmc_card_removed(host->card)) {
++		/*
++		 * Request starter must handle retries - see
++		 * mmc_wait_for_req_done().
++		 */
++		if (mrq->done)
++			mrq->done(mrq);
+ 	} else {
+ 		led_trigger_event(host->led, LED_OFF);
+ 
+@@ -196,10 +196,129 @@
+ 
+ static void mmc_wait_done(struct mmc_request *mrq)
+ {
+-	complete(mrq->done_data);
++	complete(&mrq->completion);
++}
++
++static void __mmc_start_req(struct mmc_host *host, struct mmc_request *mrq)
++{
++	init_completion(&mrq->completion);
++	mrq->done = mmc_wait_done;
++	if (mmc_card_removed(host->card)) {
++		mrq->cmd->error = -ENOMEDIUM;
++		complete(&mrq->completion);
++		return;
++	}
++	mmc_start_request(host, mrq);
++}
++
++static void mmc_wait_for_req_done(struct mmc_host *host,
++				  struct mmc_request *mrq)
++{
++	struct mmc_command *cmd;
++
++	while (1) {
++		wait_for_completion(&mrq->completion);
++
++		cmd = mrq->cmd;
++		if (!cmd->error || !cmd->retries ||
++				mmc_card_removed(host->card))
++			break;
++
++		pr_debug("%s: req failed (CMD%u): %d, retrying...\n",
++			 mmc_hostname(host), cmd->opcode, cmd->error);
++		cmd->retries--;
++		cmd->error = 0;
++		host->ops->request(host, mrq);
++	}
+ }
+ 
+ /**
++ *	mmc_pre_req - Prepare for a new request
++ *	@host: MMC host to prepare command
++ *	@mrq: MMC request to prepare for
++ *	@is_first_req: true if there is no previous started request
++ *                     that may run in parellel to this call, otherwise false
++ *
++ *	mmc_pre_req() is called in prior to mmc_start_req() to let
++ *	host prepare for the new request. Preparation of a request may be
++ *	performed while another request is running on the host.
++ */
++static void mmc_pre_req(struct mmc_host *host, struct mmc_request *mrq,
++		 bool is_first_req)
++{
++	if (host->ops->pre_req)
++		host->ops->pre_req(host, mrq, is_first_req);
++}
++
++/**
++ *	mmc_post_req - Post process a completed request
++ *	@host: MMC host to post process command
++ *	@mrq: MMC request to post process for
++ *	@err: Error, if non zero, clean up any resources made in pre_req
++ *
++ *	Let the host post process a completed request. Post processing of
++ *	a request may be performed while another reuqest is running.
++ */
++static void mmc_post_req(struct mmc_host *host, struct mmc_request *mrq,
++			 int err)
++{
++	if (host->ops->post_req)
++		host->ops->post_req(host, mrq, err);
++}
++
++/**
++ *	mmc_start_req - start a non-blocking request
++ *	@host: MMC host to start command
++ *	@areq: async request to start
++ *	@error: out parameter returns 0 for success, otherwise non zero
++ *
++ *	Start a new MMC custom command request for a host.
++ *	If there is on ongoing async request wait for completion
++ *	of that request and start the new one and return.
++ *	Does not wait for the new request to complete.
++ *
++ *      Returns the completed request, NULL in case of none completed.
++ *	Wait for the an ongoing request (previoulsy started) to complete and
++ *	return the completed request. If there is no ongoing request, NULL
++ *	is returned without waiting. NULL is not an error condition.
++ */
++struct mmc_async_req *mmc_start_req(struct mmc_host *host,
++				    struct mmc_async_req *areq, int *error)
++{
++	int err = 0;
++	struct mmc_async_req *data = host->areq;
++
++	/* Prepare a new request */
++	if (areq)
++		mmc_pre_req(host, areq->mrq, !host->areq);
++
++	if (host->areq) {
++		mmc_wait_for_req_done(host, host->areq->mrq);
++		err = host->areq->err_check(host->card, host->areq);
++		if (err) {
++			mmc_post_req(host, host->areq->mrq, 0);
++			if (areq)
++				mmc_post_req(host, areq->mrq, -EINVAL);
++
++			host->areq = NULL;
++			goto out;
++		}
++	}
++
++	if (areq)
++		__mmc_start_req(host, areq->mrq);
++
++	if (host->areq)
++		mmc_post_req(host, host->areq->mrq, 0);
++
++	host->areq = areq;
++ out:
++	if (error)
++		*error = err;
++	return data;
++}
++EXPORT_SYMBOL(mmc_start_req);
++/**
+  *	mmc_wait_for_req - start a request and wait for completion
+  *	@host: MMC host to start command
+  *	@mrq: MMC request to start
+@@ -210,14 +329,8 @@
+  */
+ void mmc_wait_for_req(struct mmc_host *host, struct mmc_request *mrq)
+ {
+-	DECLARE_COMPLETION_ONSTACK(complete);
+-
+-	mrq->done_data = &complete;
+-	mrq->done = mmc_wait_done;
+-
+-	mmc_start_request(host, mrq);
+-
+-	wait_for_completion(&complete);
++	__mmc_start_req(host, mrq);
++	mmc_wait_for_req_done(host, mrq);
+ }
+ 
+ EXPORT_SYMBOL(mmc_wait_for_req);
+@@ -296,9 +409,11 @@
+ 		unsigned int timeout_us, limit_us;
+ 
+ 		timeout_us = data->timeout_ns / 1000;
+-		if (card->host->ios.clock)
+ 			timeout_us += data->timeout_clks * 1000 /
+ 				(card->host->ios.clock / 1000);
++/*               if (card->host->ios.clock)
++                       timeout_us += data->timeout_clks * 1000 /
++                               (card->host->ios.clock / 1000);*/
+ 
+ 		if (data->flags & MMC_DATA_WRITE)
+ 			/*
+@@ -1059,6 +1174,7 @@
+ 	spin_unlock_irqrestore(&host->lock, flags);
+ #endif
+ 
++	host->detect_change = 1;
+ 	mmc_schedule_delayed_work(&host->detect, delay);
+ }
+ 
+@@ -1426,6 +1542,42 @@
+ }
+ EXPORT_SYMBOL(mmc_set_blocklen);
+ 
++int _mmc_detect_card_removed(struct mmc_host *host)
++{
++	int ret;
++
++	if ((host->caps & MMC_CAP_NONREMOVABLE) || !host->bus_ops->alive)
++		return 0;
++
++	if (!host->card || mmc_card_removed(host->card))
++		return 1;
++
++	ret = host->bus_ops->alive(host);
++	if (ret) {
++		mmc_card_set_removed(host->card);
++		pr_debug("%s: card remove detected\n", mmc_hostname(host));
++	}
++
++	return ret;
++}
++
++int mmc_detect_card_removed(struct mmc_host *host)
++{
++	struct mmc_card *card = host->card;
++
++	WARN_ON(!host->claimed);
++	/*
++	 * The card will be considered unchanged unless we have been asked to
++	 * detect a change or host requires polling to provide card detection.
++	 */
++	if (card && !host->detect_change && !(host->caps & MMC_CAP_NEEDS_POLL))
++		return mmc_card_removed(card);
++
++	host->detect_change = 0;
++
++	return _mmc_detect_card_removed(host);
++}
++EXPORT_SYMBOL(mmc_detect_card_removed);
+ void mmc_rescan(struct work_struct *work)
+ {
+ 	struct mmc_host *host =
+@@ -1455,6 +1607,7 @@
+ 	if (host->bus_ops && host->bus_ops->detect && !host->bus_dead
+ 	    && mmc_card_is_removable(host))
+ 		host->bus_ops->detect(host);
++	host->detect_change = 0;
+ 
+ 	mmc_bus_put(host);
+ 
+Index: kernel/linux-2.6.37-psp04.04.00.01/arch/arm/mach-omap2/Makefile
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/arch/arm/mach-omap2/Makefile	2014-08-07 17:02:50.985896709 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/arch/arm/mach-omap2/Makefile	2014-08-07 17:02:50.945896711 -0600
+@@ -186,6 +186,7 @@
+ obj-$(CONFIG_MACH_OMAP3_BEAGLE)		+= board-omap3beagle.o \
+ 					   board-flash.o \
+ 					   hsmmc.o
++obj-$(CONFIG_HAVE_TRACE_CLOCK)		+= trace-clock.o
+ obj-$(CONFIG_MACH_DEVKIT8000)     	+= board-devkit8000.o \
+                                            hsmmc.o
+ obj-$(CONFIG_MACH_OMAP_LDP)		+= board-ldp.o \
+@@ -255,7 +256,10 @@
+ obj-$(CONFIG_MACH_TI8148EVM)		+= board-ti8148evm.o \
+ 					   hsmmc.o \
+ 					   board-flash.o
+-obj-$(CONFIG_MACH_DM385EVM)		+= board-dm385evm.o \
++obj-$(CONFIG_MACH_DM385EVM)		+= board-dm385som.o \
++					   hsmmc.o \
++					   board-flash.o
++obj-$(CONFIG_MACH_TI811XEVM)		+= board-ti811xevm.o \
+ 					   hsmmc.o \
+ 					   board-flash.o
+ obj-$(CONFIG_MACH_TI8168EVM)		+= board-ti8168evm.o \
+Index: kernel/linux-2.6.37-psp04.04.00.01/arch/arm/mach-omap2/board-ti8148evm.c
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/arch/arm/mach-omap2/board-ti8148evm.c	2014-08-07 17:02:50.985896709 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/arch/arm/mach-omap2/board-ti8148evm.c	2014-08-07 17:02:50.945896711 -0600
+@@ -58,6 +58,9 @@
+ 
+ #define GPIO_TSC               31
+ 
++/* Convert GPIO signal to GPIO pin number */
++#define GPIO_TO_PIN(bank, gpio) (32 * (bank) + (gpio))
++
+ #ifdef CONFIG_OMAP_MUX
+ static struct omap_board_mux board_mux[] __initdata = {
+ 	{ .reg_offset = OMAP_MUX_TERMINATOR },
+@@ -70,7 +73,7 @@
+ 	{
+ 		.mmc		= 1,
+ 		.caps		= MMC_CAP_4_BIT_DATA,
+-		.gpio_cd	= -EINVAL, /* Dedicated pins for CD and WP */
++		.gpio_cd	= GPIO_TO_PIN(1, 6), /* Dedicated pins for CD and WP */
+ 		.gpio_wp	= -EINVAL,
+ 		.ocr_mask	= MMC_VDD_33_34,
+ 	},
+@@ -116,6 +119,7 @@
+ #define VPS_VC_IO_EXP_THS7368_FILTER1_MASK  (0x40u)
+ #define VPS_VC_IO_EXP_THS7368_FILTER2_MASK  (0x80u)
+ #define VPS_VC_IO_EXP_THS7368_FILTER_SHIFT  (0x06u)
++#define pcf8575_IR_REMOTE_OFF (0x40)
+ 
+ 
+ static const struct i2c_device_id pcf8575_video_id[] = {
+@@ -148,7 +152,45 @@
+ 	.remove         = pcf8575_video_remove,
+ 	.id_table       = pcf8575_video_id,
+ };
++static const struct i2c_device_id pcf8575_cir_id[] = {
++	{ "IO Expander", 0 },
++	{ }
++};
++static struct i2c_client *pcf8575_cir_client;
++static unsigned char pcf8575_cir_port[2] = {0, 0xbf};
++static int pcf8575_cir_enable(void);
++static int pcf8575_cir_probe(struct i2c_client *client,
++				const struct i2c_device_id *id)
++{
++	pcf8575_cir_client = client;
++	pcf8575_cir_enable();
++	return 0;
++}
+ 
++static int __devexit pcf8575_cir_remove(struct i2c_client *client)
++{
++	pcf8575_cir_client = NULL;
++	return 0;
++}
++static struct i2c_driver pcf8575_cir_driver = {
++	.driver = {
++		.name	= "IO Expander",
++	},
++	.probe		= pcf8575_cir_probe,
++	.remove		= pcf8575_cir_remove,
++	.id_table		= pcf8575_cir_id,
++};
++int ti814x_pcf8575_cir_init(void)
++{
++	i2c_add_driver(&pcf8575_cir_driver);
++	return 0;
++}
++
++int ti814x_pcf8575_cir_exit(void)
++{
++	i2c_del_driver(&pcf8575_cir_driver);
++	return 0;
++}
+ int ti814x_pcf8575_init(void)
+ {
+ 	i2c_add_driver(&pcf8575_driver);
+@@ -162,6 +204,19 @@
+ 	return 0;
+ }
+ EXPORT_SYMBOL(ti814x_pcf8575_exit);
++
++/* The following two functions are stubs - Added to avoid compilation
++ error, refer CQ SDOCM00094243 for more details, Need to remove this code once the
++ CQ is fixed */
++int ti811x_pcf8575_init(void)
++{
++        return 0;
++}
++int ti811x_pcf8575_exit(void)
++{
++        return 0;
++}
++
+ #define VPS_VC_IO_EXP_RESET_DEV_MASK        (0x0Fu)
+ #define VPS_VC_IO_EXP_SEL_VIN0_S1_MASK      (0x04u)
+ #define VPS_VC_IO_EXP_THS7368_DISABLE_MASK  (0x10u)
+@@ -169,6 +224,39 @@
+ #define VPS_VC_IO_EXP_THS7368_FILTER1_MASK  (0x40u)
+ #define VPS_VC_IO_EXP_THS7368_FILTER2_MASK  (0x80u)
+ #define VPS_VC_IO_EXP_THS7368_FILTER_SHIFT  (0x06u)
++static void cir_pin_mux(void)
++{
++	char mux_name[100];
++	sprintf(mux_name, "uart0_rin.uart1_rxd_mux0");
++	omap_mux_init_signal(mux_name, OMAP_MUX_MODE0 |
++			TI814X_PULL_DIS | TI814X_INPUT_EN);
++	return;
++}
++
++int pcf8575_cir_enable(void)
++{
++	int ret = 0;
++	struct i2c_msg msg = {
++		.addr = pcf8575_cir_client->addr,
++		.flags = 1,
++		.len = 2,
++	};
++	msg.buf = pcf8575_cir_port;
++	ret = i2c_transfer(pcf8575_cir_client->adapter, &msg, 1);
++	msg.flags = 0;
++	if (ret < 0)
++		printk(KERN_ERR "I2C: Read failed at %s %d with error code: %d\n",
++			__func__, __LINE__, ret);
++	pcf8575_cir_port[0] = msg.buf[0];
++	pcf8575_cir_port[1] = (msg.buf[1] & ~(pcf8575_IR_REMOTE_OFF));
++	ret = i2c_transfer(pcf8575_cir_client->adapter, &msg, 1);
++	cir_pin_mux();
++	if (ret < 0)
++		printk(KERN_ERR "I2C: Transfer failed at %s %d with error code: %d\n",
++			__func__, __LINE__, ret);
++	return ret;
++
++}
+ int vps_ti814x_select_video_decoder(int vid_decoder_id)
+ {
+ 	int ret = 0;
+@@ -263,7 +351,7 @@
+ 			__func__, __LINE__, ret);
+ 		return ret;
+ 	}
+-	return ret;
++	return 0;
+ }
+ EXPORT_SYMBOL(vps_ti814x_set_tvp7002_filter);
+ /* Touchscreen platform data */
+@@ -529,8 +617,8 @@
+ 	.serial_dir	= ti8148_iis_serializer_direction,
+ 	.asp_chan_q	= EVENTQ_2,
+ 	.version	= MCASP_VERSION_2,
+-	.txnumevt	= 1,
+-	.rxnumevt	= 1,
++	.txnumevt	= 64,
++	.rxnumevt	= 64,
+ };
+ 
+ /* NOR Flash partitions */
+@@ -689,6 +777,7 @@
+ static struct snd_hdmi_platform_data ti8148_snd_hdmi_pdata = {
+ 	.dma_addr = TI81xx_HDMI_WP + HDMI_WP_AUDIO_DATA,
+ 	.channel = 53,
++	.dma_chan_q = EVENTQ_0,
+ 	.data_type = 4,
+ 	.acnt = 4,
+ 	.fifo_level = 0x20,
+@@ -760,7 +849,6 @@
+ 
+ static void __init ti8148_evm_init(void)
+ {
+-	int bw; /* bus-width */
+ 
+ 	ti814x_mux_init(board_mux);
+ 	omap_serial_init();
+@@ -771,18 +859,8 @@
+ 	omap2_hsmmc_init(mmc);
+ 
+ 	/* nand initialisation */
+-	if (cpu_is_ti814x()) {
+-		u32 *control_status = TI81XX_CTRL_REGADDR(0x40);
+-		if (*control_status & (1<<16))
+-			bw = 2; /*16-bit nand if BTMODE BW pin on board is ON*/
+-		else
+-			bw = 0; /*8-bit nand if BTMODE BW pin on board is OFF*/
+-
+-		board_nand_init(ti814x_nand_partitions,
+-			ARRAY_SIZE(ti814x_nand_partitions), 0, bw);
+-	} else
+-		board_nand_init(ti814x_nand_partitions,
+-		ARRAY_SIZE(ti814x_nand_partitions), 0, NAND_BUSWIDTH_16);
++	board_nand_init(ti814x_nand_partitions,
++		ARRAY_SIZE(ti814x_nand_partitions), 0, NAND_OMAP_BUS_16);
+ 
+ 	/* initialize usb */
+ 	usb_musb_init(&musb_board_data);
+@@ -801,6 +879,7 @@
+ 	/* LSI Gigabit Phy fixup */
+ 	phy_register_fixup_for_uid(LSI_PHY_ID, LSI_PHY_MASK,
+ 				   ti8148_evm_lsi_phy_fixup);
++	ti814x_pcf8575_cir_init();
+ }
+ 
+ static void __init ti8148_evm_map_io(void)
+Index: kernel/linux-2.6.37-psp04.04.00.01/arch/arm/mach-omap2/devices.c
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/arch/arm/mach-omap2/devices.c	2014-08-07 17:02:50.985896709 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/arch/arm/mach-omap2/devices.c	2014-08-07 17:02:50.945896711 -0600
+@@ -615,8 +615,7 @@
+ 
+ 	platform_device_register(&omap2_mcspi1);
+ 
+-	if (!cpu_is_ti816x())
+-		omap2_mcspi2_init();
++	platform_device_register(&omap2_mcspi2);
+ 
+ 	if (cpu_is_omap2430() || cpu_is_omap343x() || cpu_is_omap44xx() ||
+ 		cpu_is_ti814x())
+@@ -1056,6 +1055,7 @@
+ 	int i;
+ 	char *name;
+ 
++printk(" mmc nr_controllers %d", nr_controllers);
+ 	for (i = 0; i < nr_controllers; i++) {
+ 		unsigned long base = 0;
+ 		unsigned long size;
+@@ -1076,15 +1076,15 @@
+ 				irq = TI81XX_IRQ_SD;
+ 			} else if (cpu_is_ti814x()) {
+ 				base = TI814X_MMC1_BASE;
+-#ifdef CONFIG_TI8148EVM_WL12XX
++//#ifdef CONFIG_TI8148EVM_WL12XX
+ 				irq = TI81XX_IRQ_SD;
+-#else
+-				irq = TI814X_IRQ_SD1;
+-#endif
++//#else
++//				irq = TI814X_IRQ_SD1;
++//#endif
+ 			}
+ 			break;
+ 		case 1:
+-#ifdef CONFIG_TI8148EVM_WL12XX
++//#ifdef CONFIG_TI8148EVM_WL12XX
+ 			if (cpu_is_ti814x()) {
+ 				base = TI814X_MMC2_BASE;
+ 				irq = TI814X_IRQ_SD1;
+@@ -1092,10 +1092,10 @@
+ 				base = OMAP2_MMC2_BASE;
+ 				irq = INT_24XX_MMC2_IRQ;
+ 			}
+-#else
+-			base = OMAP2_MMC2_BASE;
+-			irq = INT_24XX_MMC2_IRQ;
+-#endif
++//#else
++//			base = OMAP2_MMC2_BASE;
++//			irq = INT_24XX_MMC2_IRQ;
++//#endif
+ 			break;
+ 		case 2:
+ 			if (!cpu_is_omap44xx() && !cpu_is_omap34xx())
+@@ -1874,6 +1874,51 @@
+ 		omap_mux_init_signal("iic1_scl", OMAP_MUX_MODE0 | OMAP_PULL_UP);
+ 		omap_mux_init_signal("iic1_sda", OMAP_MUX_MODE0 | OMAP_PULL_UP);
+ 
++	} else if (cpu_is_ti811x()){
++		/*Temporary hack, till we have interface
++		 to configure pin mux for J5-Eco*/
++
++		/*I2c2 - Pin Muxing*/
++		omap_writel(0x60040, 0x48140A18);
++		omap_writel(0x60040, 0x48140A1c);
++		omap_writel(0x1, 0x48140924);
++		omap_writel(0x1, 0x48140928);
++		omap_writel(0x1, 0x481409a0);
++		omap_writel(0x1, 0x481409a4);
++		omap_writel(0x1, 0x48140a6c);
++		omap_writel(0x1, 0x48140b8c);
++		omap_writel(0x1, 0x48140b90);
++		omap_writel(0x1, 0x48140ba8);
++
++		/*Pin Muxing for Vout1*/
++		omap_writel(0x1, 0x48140B2c);
++		omap_writel(0x1, 0x481409f0);
++		omap_writel(0x1, 0x48140b30);
++		omap_writel(0x1, 0x48140b34);
++		omap_writel(0x1, 0x48140B38);
++		omap_writel(0x1, 0x48140B3C);
++		omap_writel(0x1, 0x48140B40);
++		omap_writel(0x1, 0x48140B44);
++		omap_writel(0x1, 0x48140B48);
++		omap_writel(0x1, 0x48140B4C);
++		omap_writel(0x1, 0x48140B50);
++		omap_writel(0x1, 0x48140B54);
++		omap_writel(0x1, 0x48140B58);
++		omap_writel(0x1, 0x48140B5C);
++		omap_writel(0x1, 0x48140B60);
++		omap_writel(0x1, 0x48140B64);
++		omap_writel(0x1, 0x48140B68);
++		omap_writel(0x1, 0x48140B6C);
++		omap_writel(0x1, 0x48140B70);
++		omap_writel(0x1, 0x48140B74);
++		omap_writel(0x1, 0x48140B78);
++		omap_writel(0x1, 0x48140B7C);
++		omap_writel(0x1, 0x48140B80);
++		omap_writel(0x1, 0x48140B84);
++		omap_writel(0x1, 0x48140B88);
++		omap_writel(0x1, 0x48140B8C);
++		omap_writel(0x1, 0x48140B90);
++		omap_writel(0x1, 0x48140B94);
+ 	} else if (cpu_is_ti814x())	{
+ 		/*VOUT0 DVO2 configuration*/
+ 		omap_mux_init_signal("vout0_fid_mux1", OMAP_MUX_MODE0);
+@@ -2071,22 +2116,71 @@
+ {
+ 	int error = 0;
+ 
+-	omap_mux_init_signal("gpmc_ad0", TI814X_PULL_DIS | TI814X_INPUT_EN);
+-	omap_mux_init_signal("gpmc_ad1", TI814X_PULL_DIS | TI814X_INPUT_EN);
+-	omap_mux_init_signal("gpmc_ad2", TI814X_PULL_DIS | TI814X_INPUT_EN);
+-	omap_mux_init_signal("gpmc_ad3", TI814X_PULL_DIS | TI814X_INPUT_EN);
+-	omap_mux_init_signal("gpmc_ad4", TI814X_PULL_DIS | TI814X_INPUT_EN);
+-	omap_mux_init_signal("gpmc_ad5", TI814X_PULL_DIS | TI814X_INPUT_EN);
+-	omap_mux_init_signal("gpmc_ad6", TI814X_PULL_DIS | TI814X_INPUT_EN);
+-	omap_mux_init_signal("gpmc_ad7", TI814X_PULL_DIS | TI814X_INPUT_EN);
+-	omap_mux_init_signal("gpmc_ad8", TI814X_PULL_DIS | TI814X_INPUT_EN);
+-	omap_mux_init_signal("gpmc_ad9", TI814X_PULL_DIS | TI814X_INPUT_EN);
+-	omap_mux_init_signal("gpmc_ad10", TI814X_PULL_DIS | TI814X_INPUT_EN);
+-	omap_mux_init_signal("gpmc_ad11", TI814X_PULL_DIS | TI814X_INPUT_EN);
+-	omap_mux_init_signal("gpmc_ad12", TI814X_PULL_DIS | TI814X_INPUT_EN);
+-	omap_mux_init_signal("gpmc_ad13", TI814X_PULL_DIS | TI814X_INPUT_EN);
+-	omap_mux_init_signal("gpmc_ad14", TI814X_PULL_DIS | TI814X_INPUT_EN);
+-	omap_mux_init_signal("gpmc_ad15", TI814X_PULL_DIS | TI814X_INPUT_EN);
++	if (cpu_is_ti811x()) { /*TI811X */
++		omap_mux_init_signal("gmii0_rxd4.gpmc_a_1_mux0",
++					TI814X_PULL_DIS | TI814X_INPUT_EN);
++		omap_mux_init_signal("gmii0_rxd5.gpmc_a_2_mux0",
++					TI814X_PULL_DIS | TI814X_INPUT_EN);
++		omap_mux_init_signal("gmii0_rxd6.gpmc_a_3_mux0",
++					TI814X_PULL_DIS | TI814X_INPUT_EN);
++		omap_mux_init_signal("gmii0_rxd7.gpmc_a_4_mux0",
++					TI814X_PULL_DIS | TI814X_INPUT_EN);
++		omap_mux_init_signal("gmii0_rxdv.gpmc_a_5_mux0",
++					TI814X_PULL_DIS | TI814X_INPUT_EN);
++		omap_mux_init_signal("gmii0_gtxclk.gpmc_a_6_mux0",
++					TI814X_PULL_DIS | TI814X_INPUT_EN);
++		omap_mux_init_signal("gmii0_txd0.gpmc_a_7_mux0",
++					TI814X_PULL_DIS | TI814X_INPUT_EN);
++		omap_mux_init_signal("gmii0_txd1.gpmc_a_8_mux0",
++					TI814X_PULL_DIS | TI814X_INPUT_EN);
++		omap_mux_init_signal("gmii0_txd2.gpmc_a_9_mux0",
++					TI814X_PULL_DIS | TI814X_INPUT_EN);
++		omap_mux_init_signal("gmii0_txd3.gpmc_a_10_mux0",
++					TI814X_PULL_DIS | TI814X_INPUT_EN);
++		omap_mux_init_signal("gmii0_txd4.gpmc_a_11_mux0",
++					TI814X_PULL_DIS | TI814X_INPUT_EN);
++		omap_mux_init_signal("gmii0_txd5.gpmc_a_12_mux0",
++					TI814X_PULL_DIS | TI814X_INPUT_EN);
++		omap_mux_init_signal("gmii0_txd6.gpmc_a_13_mux0",
++					TI814X_PULL_DIS | TI814X_INPUT_EN);
++		omap_mux_init_signal("gmii0_txd7.gpmc_a_14_mux0",
++					TI814X_PULL_DIS | TI814X_INPUT_EN);
++		omap_mux_init_signal("gmii0_txen.gpmc_a_15_mux0",
++					TI814X_PULL_DIS | TI814X_INPUT_EN);
++	} else { /*TI814X except J5Eco */
++		omap_mux_init_signal("gpmc_ad0",
++					TI814X_PULL_DIS | TI814X_INPUT_EN);
++		omap_mux_init_signal("gpmc_ad1",
++					TI814X_PULL_DIS | TI814X_INPUT_EN);
++		omap_mux_init_signal("gpmc_ad2",
++					TI814X_PULL_DIS | TI814X_INPUT_EN);
++		omap_mux_init_signal("gpmc_ad3",
++					TI814X_PULL_DIS | TI814X_INPUT_EN);
++		omap_mux_init_signal("gpmc_ad4",
++					TI814X_PULL_DIS | TI814X_INPUT_EN);
++		omap_mux_init_signal("gpmc_ad5",
++					TI814X_PULL_DIS | TI814X_INPUT_EN);
++		omap_mux_init_signal("gpmc_ad6",
++					TI814X_PULL_DIS | TI814X_INPUT_EN);
++		omap_mux_init_signal("gpmc_ad7",
++					TI814X_PULL_DIS | TI814X_INPUT_EN);
++		omap_mux_init_signal("gpmc_ad8",
++					TI814X_PULL_DIS | TI814X_INPUT_EN);
++		omap_mux_init_signal("gpmc_ad9",
++					TI814X_PULL_DIS | TI814X_INPUT_EN);
++		omap_mux_init_signal("gpmc_ad10",
++					TI814X_PULL_DIS | TI814X_INPUT_EN);
++		omap_mux_init_signal("gpmc_ad11",
++					TI814X_PULL_DIS | TI814X_INPUT_EN);
++		omap_mux_init_signal("gpmc_ad12",
++					TI814X_PULL_DIS | TI814X_INPUT_EN);
++		omap_mux_init_signal("gpmc_ad13",
++					TI814X_PULL_DIS | TI814X_INPUT_EN);
++		omap_mux_init_signal("gpmc_ad14",
++					TI814X_PULL_DIS | TI814X_INPUT_EN);
++		omap_mux_init_signal("gpmc_ad15",
++					TI814X_PULL_DIS | TI814X_INPUT_EN);
++	}
+ 	omap_mux_init_signal("mmc2_dat3.gpmc_a_1_mux1", TI814X_PULL_UP);
+ 	omap_mux_init_signal("mmc2_dat2.gpmc_a_2_mux1", TI814X_PULL_UP);
+ 	omap_mux_init_signal("mmc2_dat1.gpmc_a_3_mux1", TI814X_PULL_UP);
+@@ -2110,8 +2204,13 @@
+ 	omap_mux_init_signal("gpmc_a_21_mux0", 0);
+ 	omap_mux_init_signal("gpmc_a_22_mux0", TI814X_PULL_UP);
+ 	omap_mux_init_signal("gpmc_a_23_mux0", 0);
++	if (cpu_is_ti811x()) { /*TI811X */
++		omap_mux_init_signal("mmc2_dat7.gpmc_a_24_mux1", TI814X_PULL_UP);
++		omap_mux_init_signal("mmc2_dat6.gpmc_a_25_mux1", 0);
++	} else {
+ 	omap_mux_init_signal("gpmc_cs2.gpmc_a_24_mux1", TI814X_PULL_UP);
+ 	omap_mux_init_signal("gpmc_cs1.gpmc_a_25_mux1", 0);
++	}
+ 	omap_mux_init_signal("mmc2_dat4.gpio1_22", TI814X_PULL_UP);
+ 	omap_mux_init_signal("gpmc_cs0", TI814X_PULL_UP);
+ 	omap_mux_init_signal("gpmc_oen_ren", TI814X_PULL_UP);
+@@ -2135,11 +2234,14 @@
+ #ifdef CONFIG_ARCH_TI814X
+ #define TI814X_CPSW_BASE		(0x4A100000)
+ #define TI814X_CPSW_MDIO_BASE		(0x4A100800)
++#define TI811X_CPSW_MDIO_BASE		(0x4A101000)
+ #define	TI814X_CPSW_SS_BASE		(0x4A100900)
++#define	TI811X_CPSW_SS_BASE		(0x4A101200)
+ #define TI814X_EMAC_MDIO_FREQ		(1000000)
+ /* Port Vlan IDs for Dual Mac Mode */
+ #define CPSW_PORT_VLAN_SLAVE_0		2
+ #define CPSW_PORT_VLAN_SLAVE_1		3
++#define TI81XX_DEFAULT_VLAN		4000
+ 
+ static u64 cpsw_dma_mask = DMA_BIT_MASK(32);
+ /* TODO : Verify the offsets */
+@@ -2162,6 +2264,7 @@
+ 	.ss_reg_ofs		= 0x900,
+ 	.channels		= 8,
+ 	.cpdma_reg_ofs		= 0x100,
++	.cpdma_sram_ofs         = 0x200,
+ 	.slaves			= 2,
+ 	.slave_data		= cpsw_slaves,
+ 	.ale_reg_ofs		= 0x600,
+@@ -2176,6 +2279,7 @@
+ 	.gigabit_en		= 1,
+ 	.host_port_num		= 0,
+ 	.no_bd_ram		= false,
++	.default_vlan		= TI81XX_DEFAULT_VLAN,
+ };
+ 
+ static struct mdio_platform_data cpsw_mdio_pdata = {
+@@ -2298,13 +2402,32 @@
+ #if 0
+ 	ti814x_cpsw_mux();
+ #endif
+-	if (cpu_is_dm385() || (cpu_is_ti814x() &&
+-			      omap_rev() > TI8148_REV_ES1_0)) {
+-		cpsw_slaves[0].phy_id = "0:00";
+-		cpsw_slaves[1].phy_id = "0:01";
+-	} else
++	if (!(cpu_is_ti811x() || cpu_is_dm385() ||
++			(cpu_is_ti814x() && omap_rev() > TI8148_REV_ES1_0)))
+ 		cpsw_slaves[0].phy_id = "0:01";
+ 
++	if (cpu_is_ti811x()) {
++		cpsw_slaves[0].slave_reg_ofs		= 0x200;
++		cpsw_slaves[0].sliver_reg_ofs		= 0xd80;
++		cpsw_slaves[1].slave_reg_ofs		= 0x300;
++		cpsw_slaves[1].sliver_reg_ofs		= 0xdc0;
++
++		ti814x_cpsw_pdata.ss_reg_ofs		= 0x1200;
++		ti814x_cpsw_pdata.cpdma_reg_ofs		= 0x800;
++		ti814x_cpsw_pdata.cpdma_sram_ofs	= 0xa00;
++		ti814x_cpsw_pdata.ale_reg_ofs		= 0xd00;
++		ti814x_cpsw_pdata.host_port_reg_ofs	= 0x108;
++		ti814x_cpsw_pdata.hw_stats_reg_ofs	= 0x900;
++		ti814x_cpsw_pdata.cpts_reg_ofs		= 0xc00;
++
++		cpsw_mdio_resources[0].start	= TI811X_CPSW_MDIO_BASE;
++		cpsw_mdio_resources[0].end	= TI811X_CPSW_MDIO_BASE
++						  + SZ_256 - 1;
++
++		ti814x_cpsw_resources[1].start  = TI811X_CPSW_SS_BASE;
++		ti814x_cpsw_resources[1].end    = TI811X_CPSW_SS_BASE
++						  + SZ_256 - 1;
++	}
+ 	platform_device_register(&cpsw_mdio_device);
+ 	platform_device_register(&ti814x_cpsw_device);
+ 	clk_add_alias(NULL, dev_name(&cpsw_mdio_device.dev),
+@@ -2634,7 +2757,7 @@
+ 
+ static inline void omap_init_ahci(void)
+ {
+-	if (cpu_is_ti81xx()) {
++	if ((cpu_is_ti81xx()) && (!cpu_is_ti811x())) {
+ 		platform_device_register(&omap_ahci0_device);
+ 		if (cpu_is_dm385())
+ 			platform_device_register(&omap_ahci1_device);
+@@ -2883,26 +3006,48 @@
+ 	__raw_writel(KICK0_REG_VAL, base + KICK0_REG);
+ 	__raw_writel(KICK1_REG_VAL, base + KICK1_REG);
+ 
++	if (cpu_is_ti811x()) {
++		/*
++		 * Enable the 32K OSc
++		 * TODO: Need a better way to handle this
++		 * Since we want the clock to be running before mmc init
++		 * we need to do it before the rtc probe happens
++		 */
++		__raw_writel(0x48, base + 0x54);
++	} else {
+ 	/* Reset the RTC */
+ 	__raw_writel(RESET_VAL, base + OSC_REG);
+ 
+ 	/*
+-	 * After setting the SW_RESET bit, RTC registers must not be accessed
+-	 * for 3 32kHz clock cycles (roughly 2200 OCP cycles).
++		 * After setting the SW_RESET bit, RTC registers must
++		 * not be accessed for 3 32kHz clock cycles
++		 * (roughly 2200 OCP cycles).
+ 	 */
+ 	udelay(100);
+ 
+ 	/*
+-	 * Unlock the rtc's registers again as the registers would have been
+-	 * locked due to reset
++		 * Unlock the rtc's registers again as the registers
++		 * would have been locked due to reset
+ 	 */
+ 	__raw_writel(KICK0_REG_VAL, base + KICK0_REG);
+ 	__raw_writel(KICK1_REG_VAL, base + KICK1_REG);
+ 
++	}
+ 	iounmap(base);
+ 
+ 	return  platform_device_register(&ti81xx_rtc_device);
+ }
++static void __init clkout2_enable(void)
++{
++	struct clk *ck_32;
++
++	ck_32 = clk_get(NULL, "osc_32k_ck");
++	if (IS_ERR(ck_32)) {
++		pr_err("Cannot clk_get ck_32\n");
++		return;
++	}
++	clk_enable(ck_32);
++}
+ #endif
+ 
+ static int __init omap2_init_devices(void)
+@@ -2926,17 +3071,21 @@
+ 	omap_init_aes();
+ 	omap_init_vout();
+ #ifdef CONFIG_ARCH_TI81XX
++	printk("pcie\n");
+ 	if (cpu_is_ti814x()) {
+ 		/* Init PCIe,SATA PLL here, before invoking respective init*/
+-		ti814x_pcie_pllcfg();
++	printk("pcie\n");
++		if(!cpu_is_ti811x())
+ 		ti814x_sata_pllcfg();
+ 	 }
+ 
++	printk("eth\n");
+ 	ti81xx_ethernet_init();
+-	ti81xx_init_pcie();
++	printk("edma\n");
+ 	ti81xx_register_edma();
+ 	ti81xx_init_pcm();
+ 	ti816x_sr_init();
++printk("videomux \n");
+ 	ti81xx_video_mux();
+ #ifdef CONFIG_ARCH_TI814X
+ 	ti814x_enable_i2c2();
+@@ -2949,6 +3098,7 @@
+ 	omap_init_ahci();
+ #ifdef CONFIG_ARCH_TI81XX
+ 	ti81xx_rtc_init();
++	clkout2_enable();
+ #endif
+ 	return 0;
+ }
+Index: kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/clock.h
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/clock.h	2014-08-07 17:02:50.985896709 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/clock.h	2014-08-07 17:02:50.945896711 -0600
+@@ -56,6 +56,7 @@
+ #define RATE_IN_TI814X		(1 << 6)
+ #define RATE_IN_TI816X		(1 << 7)
+ #define RATE_IN_4430		(1 << 8)
++#define RATE_IN_TI811X		(1 << 9)
+ 
+ #define RATE_IN_24XX		(RATE_IN_242X | RATE_IN_243X)
+ #define RATE_IN_34XX		(RATE_IN_3430ES1 | RATE_IN_3430ES2PLUS)
+Index: kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/dma.h
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/dma.h	2014-08-07 17:02:50.985896709 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/dma.h	2014-08-07 17:13:53.133866474 -0600
+@@ -189,8 +189,10 @@
+ #define OMAP24XX_DMA_MMC1_TX		24
+ #define OMAP24XX_DMA_MMC1_RX		25
+ #else
+-#define OMAP24XX_DMA_MMC1_RX           3
+-#define OMAP24XX_DMA_MMC1_TX           2
++#define OMAP24XX_DMA_MMC1_TX           24
++#define OMAP24XX_DMA_MMC1_RX           25
++#define OMAP24XX_DMA_MMC2_TX           2
++#define OMAP24XX_DMA_MMC2_RX           3
+ #endif
+ #endif
+ 
+@@ -219,11 +221,11 @@
+ #define OMAP24XX_DMA_SPI2_RX0		44	/* S_DMA_43 */
+ #define OMAP24XX_DMA_SPI2_TX1		45	/* S_DMA_44 */
+ #define OMAP24XX_DMA_SPI2_RX1		46	/* S_DMA_45 */
+-#endif
+-#ifdef CONFIG_TI8148EVM_WL12XX
+-#define OMAP24XX_DMA_MMC2_TX		2
+-#define OMAP24XX_DMA_MMC2_RX		3
+-#else
++//#endif
++//#ifdef CONFIG_TI8148EVM_WL12XX
++//#define OMAP24XX_DMA_MMC2_TX		2
++//#define OMAP24XX_DMA_MMC2_RX		3
++//#else
+ #define OMAP24XX_DMA_MMC2_TX		47	/* S_DMA_46 */
+ #define OMAP24XX_DMA_MMC2_RX		48	/* S_DMA_47 */
+ #endif
+Index: kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/mmc.h
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/mmc.h	2014-08-07 17:02:50.985896709 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/mmc.h	2014-08-07 17:02:50.945896711 -0600
+@@ -36,30 +36,15 @@
+ #define OMAP4_MMC5_BASE		0x480d5000
+ #define OMAP4_MMC_REG_OFFSET	0x100
+ 
+-#ifdef CONFIG_TI8148EVM_WL12XX
+-#define TI816X_NR_MMC		1
+-#else
+-#define TI81XX_NR_MMC          1
+-#endif
+-#define TI81XX_HSMMC_SIZE	0x10000
+-#define TI816X_MMC1_BASE	0x48060100 /* TI816X MMC/SD config base */
+-#define TI816X_MMC1_HL_BASE	0x48060000 /* TI816X HL configuration*/
+-#ifdef CONFIG_TI8148EVM_WL12XX
+-#define TI814X_NR_MMC		2
++#define TI81XX_NR_MMC		2
+ #define TI814X_MMC1_BASE	0x48060100 /* TI814X MMC1/SD1 config base */
+ #define TI814X_MMC1_HL_BASE	0x48060000 /* TI814X HL configuration*/
+ #define TI814X_MMC2_BASE	0x481D8100 /* TI814X MMC2/SD2 config base */
+ #define TI814X_MMC2_HL_BASE	0x481D8000 /* TI814X HL configuration*/
+ 
+-#ifdef CONFIG_ARCH_TI814X
+-#define TI81XX_NR_MMC		TI814X_NR_MMC
+-#else /* TI816X */
+-#define TI81XX_NR_MMC		TI816X_NR_MMC
+-#endif
+-#else
+-#define TI814X_MMC1_BASE       0x481D8100 /* TI814X MMC/SD config base */
+-#define TI814X_MMC1_HL_BASE    0x481D8000 /* TI814X HL configuration*/
+-#endif
++#define TI81XX_HSMMC_SIZE	0x10000
++#define TI816X_MMC1_BASE	0x48060100 /* TI816X MMC/SD config base */
++#define TI816X_MMC1_HL_BASE	0x48060000 /* TI816X HL configuration*/
+ 
+ #define HSMMC5			(1 << 4)
+ #define HSMMC4			(1 << 3)
+Index: kernel/linux-2.6.37-psp04.04.00.01/drivers/mmc/core/sdio.c
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/drivers/mmc/core/sdio.c	2014-08-07 17:02:50.985896709 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/drivers/mmc/core/sdio.c	2014-08-07 17:02:50.945896711 -0600
+@@ -537,6 +537,14 @@
+ }
+ 
+ /*
++ * Card detection - card is alive.
++ */
++static int mmc_sdio_alive(struct mmc_host *host)
++{
++	return mmc_select_card(host->card);
++}
++
++/*
+  * Card detection callback from host.
+  */
+ static void mmc_sdio_detect(struct mmc_host *host)
+@@ -558,7 +566,7 @@
+ 	/*
+ 	 * Just check if our card has been removed.
+ 	 */
+-	err = mmc_select_card(host->card);
++	err = _mmc_detect_card_removed(host);
+ 
+ 	mmc_release_host(host);
+ 
+@@ -696,6 +704,7 @@
+ 	.suspend = mmc_sdio_suspend,
+ 	.resume = mmc_sdio_resume,
+ 	.power_restore = mmc_sdio_power_restore,
++	.alive = mmc_sdio_alive,
+ };
+ 
+ 
+Index: kernel/linux-2.6.37-psp04.04.00.01/drivers/mmc/core/sdio_bus.c
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/drivers/mmc/core/sdio_bus.c	2014-08-07 17:02:50.985896709 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/drivers/mmc/core/sdio_bus.c	2014-08-07 17:02:50.949896710 -0600
+@@ -197,6 +197,36 @@
+ 
+ #ifdef CONFIG_PM_RUNTIME
+ 
++/*static int sdio_bus_pm_prepare(struct device *dev)
++{
++	struct sdio_func *func = dev_to_sdio_func(dev);
++*/
++	/*
++	 * Resume an SDIO device which was suspended at run time at this
++	 * point, in order to allow standard SDIO suspend/resume paths
++	 * to keep working as usual.
++	 *
++	 * Ultimately, the SDIO driver itself will decide (in its
++	 * suspend handler, or lack thereof) whether the card should be
++	 * removed or kept, and if kept, at what power state.
++	 *
++	 * At this point, PM core have increased our use count, so it's
++	 * safe to directly resume the device. After system is resumed
++	 * again, PM core will drop back its runtime PM use count, and if
++	 * needed device will be suspended again.
++	 *
++	 * The end result is guaranteed to be a power state that is
++	 * coherent with the device's runtime PM use count.
++	 *
++	 * The return value of pm_runtime_resume is deliberately unchecked
++	 * since there is little point in failing system suspend if a
++	 * device can't be resumed.
++	 */
++/*	if (func->card->host->caps & MMC_CAP_POWER_OFF_CARD)
++		pm_runtime_resume(dev);
++
++	return 0;
++}*/
+ static const struct dev_pm_ops sdio_bus_pm_ops = {
+ 	SET_RUNTIME_PM_OPS(
+ 		pm_generic_runtime_suspend,
+Index: kernel/linux-2.6.37-psp04.04.00.01/drivers/mmc/host/omap_hsmmc.c
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/drivers/mmc/host/omap_hsmmc.c	2014-08-07 17:02:50.985896709 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/drivers/mmc/host/omap_hsmmc.c	2014-08-07 17:02:50.949896710 -0600
+@@ -38,6 +38,7 @@
+ #include <plat/board.h>
+ #include <plat/mmc.h>
+ #include <plat/cpu.h>
++#include <asm/mach-types.h>
+ 
+ /* OMAP HSMMC Host Controller Registers */
+ #define OMAP_HSMMC_SYSCONFIG	0x0010
+@@ -197,7 +198,6 @@
+ };
+ 
+ static irqreturn_t omap_hsmmc_cd_handler(int irq, void *dev_id);
+-#ifdef CONFIG_TI8148EVM_WL12XX
+ static int omap_hsmmc_card_detection_disabled(struct omap_hsmmc_host *host)
+ {
+ 	/*
+@@ -211,7 +211,6 @@
+ 
+ 	return 0;
+ }
+-#endif
+ static int omap_hsmmc_card_detect(struct device *dev, int slot)
+ {
+ 	struct omap_mmc_platform_data *mmc = dev->platform_data;
+@@ -221,10 +220,8 @@
+ 	u32 pstate;
+ 	u32 enabled;
+ 
+-#ifdef CONFIG_TI8148EVM_WL12XX
+ 	if (omap_hsmmc_card_detection_disabled(host))
+ 		return 1;
+-#endif
+ 
+ 	if (mmc->version != MMC_CTRL_VERSION_2)
+ 		/* NOTE: assumes card detect signal is active-low */
+@@ -1585,9 +1582,7 @@
+ {
+ 	struct omap_hsmmc_host *host = mmc_priv(mmc);
+ 	int err;
+-#ifdef CONFIG_TI8148EVM_WL12XX
+ 	u32 pstate = 0;
+-#endif
+ 
+ 	BUG_ON(host->req_in_progress);
+ 	BUG_ON(host->dma_ch != -1);
+@@ -1621,7 +1616,6 @@
+ 		mmc_request_done(mmc, req);
+ 		return;
+ 	}
+-#ifdef CONFIG_TI8148EVM_WL12XX
+ 	pstate = OMAP_HSMMC_READ(host->base, PSTATE);
+ 
+ 	if (!omap_hsmmc_card_detection_disabled(host) &&
+@@ -1633,7 +1627,6 @@
+ 		omap_hsmmc_cmd_done(host, host->cmd);
+ 		return;
+ 	}
+-#endif
+ 
+ 	omap_hsmmc_start_command(host, req->cmd, req->data);
+ }
+@@ -1708,9 +1701,12 @@
+ 
+ 	if (ios->clock) {
+ 		dsor = (clk_get_rate(host->fclk)) / ios->clock;
+-		if (dsor < 1)
++		if (dsor < 1) {
+ 			dsor = 1;
+ 
++			OMAP_HSMMC_WRITE(host->base, HCTL,
++				OMAP_HSMMC_READ(host->base, HCTL) | (0x1 << 2));
++		}
+ 		if ((clk_get_rate(host->fclk)) / dsor > ios->clock)
+ 			dsor++;
+ 
+Index: kernel/linux-2.6.37-psp04.04.00.01/drivers/video/ti81xx/ti81xxfb/ti81xxfb_main.c
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/drivers/video/ti81xx/ti81xxfb/ti81xxfb_main.c	2014-08-07 17:02:50.985896709 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/drivers/video/ti81xx/ti81xxfb/ti81xxfb_main.c	2014-08-07 17:02:50.973896709 -0600
+@@ -722,6 +722,7 @@
+ 		offset = (var->xoffset * fbi->var.bits_per_pixel >> 3)
+ 				+ var->yoffset * fbi->fix.line_length;
+ 
++		offset = (offset + 0xF) & ~0xF ;
+ 		buf_addr = ti81xxfb_get_fb_paddr(tfbi) + offset;
+ 
+ 		if ((regp.regionheight != var->yres) ||
+Index: kernel/linux-2.6.37-psp04.04.00.01/drivers/video/ti81xx/ti81xxhdmi/hdmi.c
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/drivers/video/ti81xx/ti81xxhdmi/hdmi.c	2014-08-07 17:02:50.985896709 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/drivers/video/ti81xx/ti81xxhdmi/hdmi.c	2014-08-07 17:02:50.977896709 -0600
+@@ -47,12 +47,11 @@
+ #include <linux/cdev.h>
+ #include <linux/fs.h>
+ #include <linux/ioctl.h>
+-#include <linux/wait.h>
+-#include <linux/sched.h>
+ #include <linux/uaccess.h>
+ #include <linux/ti81xxhdmi.h>
+ #include "../vpss/display_interface.h"
+ #include "hdmi.h"
++#include "hdcp.h"
+ #include <linux/edid.h>
+ 
+ #define DEBUG 1 /* FIXME : this should come from menuconfig */
+@@ -78,6 +77,14 @@
+ #undef ENABLE_VENC_COLORBAR_TEST
+ /* Comment above line to see venc color bar pattern*/
+ 
++/* This MACRO controls video / audio streaming when HDMI cable is disconnected.
++ *	When defined, on HDMI cable un-plug, both video / audio streaming is
++ *		stopped.
++ *	When undefined, on HDMI cable un-plug, video / audio streaming is NOT
++ *		stopped
++ */
++/* #define DISABLE_ENABLE_ON_HPD */
++
+ static int hdmi_open(struct inode *inode, struct file *filp);
+ static int hdmi_release(struct inode *inode, struct file *filp);
+ static long hdmi_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
+@@ -138,45 +145,11 @@
+ 	0X2F, 0x3A, 0X51, 0X52, 0x16, 0x29, 0x39, 0x1B
+ };
+ 
+-/* distinguish power states when ACTIVE */
+-enum hdmi_power_state {
+-	HDMI_POWER_OFF,
+-	HDMI_POWER_MIN,		/* minimum power for HPD detect */
+-	HDMI_POWER_FULL,	/* full power */
+-} hdmi_power;
+-
+-/* Different state of this device on the CEC n/w */
+-enum hdmi_cec_state {
+-	HDMI_CEC_BYPASS,
+-	HDMI_CEC_REGISTERED,
+-	HDMI_CEC_UN_REGISTERED
+-};
++/* Power status of HDMI */
++enum hdmi_power_state hdmi_power;
+ 
+-struct hdmi {
+-	struct kobject kobj;
+-	void __iomem *base_phy;
+-	void __iomem *base_pll;
+-	void __iomem *base_prcm;
+-	void __iomem *base_wp;
+-	struct mutex lock;
+-	wait_queue_head_t hpd_changed;
+-	int hpd_update;
+-	int code;
+-	int mode;
+-	int deep_color;
+-	int lr_fr;
+-	int force_set;
+-	int freq;
+-	enum hdmi_power_state power_state;
+-	/* added for DM814x Power management */
+-	enum ti81xx_display_status status;
+-	/* added this for maintaining the status of the driver. */
+-	struct hdmi_config cfg;
+-	struct platform_device *pdev;
+-	struct ti81xx_venc_info vencinfo;
+-	struct hdmi_irq_status irq_status;
+-	enum hdmi_cec_state cec_state;
+-} hdmi;
++/* Hdmi instance config */
++struct hdmi hdmi;
+ 
+ /* Structures for chardevice move this to panel */
+ static int hdmi_major;
+@@ -225,6 +198,8 @@
+ #endif
+ static __u8 cec_pa[2] = {0, 0};
+ 
++struct ti81xxhdmi_sink_edid_parsed parsed_edid;
++
+ /*S*******************************  Driver structure *********************/
+ 
+ static int hdmi_panel_enable(void *data);
+@@ -707,29 +682,31 @@
+ static int hdmi_get_edid(void)
+ {
+ 	u8 i = 0, *e;
+-	int offset, addr;
++	int offset, addr, r;
+ 	struct HDMI_EDID *edid_st = (struct HDMI_EDID *)edid;
+-	struct image_format *img_format;
+-	struct audio_format *aud_format;
+ 	struct deep_color *vsdb_format;
+ 	struct latency *lat;
+-	struct video_timings timings;
++	struct ti81xxhdmi_sink_edid_parsed *edid_p = &parsed_edid;
+ 
+-	img_format = kzalloc(sizeof(*img_format), GFP_KERNEL);
+-	aud_format = kzalloc(sizeof(*aud_format), GFP_KERNEL);
++	r = 0;
+ 	vsdb_format = kzalloc(sizeof(*vsdb_format), GFP_KERNEL);
+ 	lat = kzalloc(sizeof(*lat), GFP_KERNEL);
+ 
++	memset(&parsed_edid, 0, sizeof(struct ti81xxhdmi_sink_edid_parsed));
++	edid_p->num_dt = 0;
++
+ 	if (HDMI_CORE_DDC_READEDID(HDMI_CORE_SYS, edid,	HDMI_EDID_MAX_LENGTH)
+ 	    != 0) {
+-		THDMIDBG("HDMI failed to read E-EDID\n");
+-		return -1;
++		printk(KERN_INFO "HDMI failed to read E-EDID\n");
++		r = -1;
++		goto exit;
+ 	}
+-	edid_set = !memcmp(edid, header, sizeof(header));
+-	if (memcmp(edid, header, sizeof(header))) {
+-		THDMIDBG("Header mismatch\n");
++	if (0 != memcmp(edid, header, sizeof(header))) {
++		printk(KERN_INFO "Header mismatch\n");
++		r = -1;
+ 		goto exit;
+ 	}
++	edid_set = true;
+ 	e = edid;
+ 	 THDMIDBG(KERN_INFO "\nHeader:\n%02x\t%02x\t%02x\t%02x\t%02x\t%02x\t"
+ 		"%02x\t%02x\n", e[0], e[1], e[2], e[3], e[4], e[5], e[6], e[7]);
+@@ -740,6 +717,8 @@
+ 	e += 10;
+ 	 THDMIDBG(KERN_INFO "EDID Structure:\n%02x\t%02x\n",
+ 		e[0], e[1]);
++	edid_p->version = e[0];
++	edid_p->revision = e[1];
+ 	e += 2;
+ 	THDMIDBG(KERN_INFO
+ 		 "Basic Display Parameter:\n%02x\t%02x\t%02x\t%02x\t%02x\n",
+@@ -749,12 +728,26 @@
+ 		"%02x\t%02x\t%02x\t%02x\t%02x\t%02x\n",
+ 		e[0], e[1], e[2], e[3], e[4], e[5], e[6], e[7], e[8], e[9]);
+ 	e += 10;
+-	THDMIDBG(KERN_INFO "Established timings:\n%02x\t%02x\t%02x\n",
++	THDMIDBG(KERN_INFO "Established timings - VESA:\n%02x\t%02x\t%02x\n",
+ 		e[0], e[1], e[2]);
++	edid_p->established_timings[0] = e[0];
++	edid_p->established_timings[1] = e[1];
++	edid_p->established_timings[2] = e[2];
+ 	e += 3;
+-	 THDMIDBG(KERN_INFO "Standard timings:\n%02x\t%02x\t%02x\t%02x\t%02x\t"
+-			 "%02x\t%02x\t%02x\n",
++
++	THDMIDBG(KERN_INFO "Refer VESA E-EDID Standard to interpret above\n");
++	THDMIDBG(KERN_INFO "Standard timings - VESA :\n%02x\t%02x\t%02x\t%02x\t"
++			 "%02x\t%02x\t%02x\t%02x\n",
+ 		e[0], e[1], e[2], e[3], e[4], e[5], e[6], e[7]);
++	THDMIDBG(KERN_INFO "Refer VESA E-EDID Standard to interpret above\n");
++	edid_p->standard_timings[0] = e[0];
++	edid_p->standard_timings[1] = e[1];
++	edid_p->standard_timings[2] = e[2];
++	edid_p->standard_timings[3] = e[3];
++	edid_p->standard_timings[4] = e[4];
++	edid_p->standard_timings[5] = e[5];
++	edid_p->standard_timings[6] = e[6];
++	edid_p->standard_timings[7] = e[7];
+ 	e += 8;
+ 	 THDMIDBG(KERN_INFO "%02x\t%02x\t%02x\t%02x\t%02x\t%02x\t%02x\t%02x\n",
+ 		e[0], e[1], e[2], e[3], e[4], e[5], e[6], e[7]);
+@@ -762,12 +755,14 @@
+ 
+ 	for (i = 0; i < EDID_SIZE_BLOCK0_TIMING_DESCRIPTOR; i++) {
+ 		THDMIDBG(KERN_INFO "Extension 0 Block %d\n", i);
+-		get_edid_timing_info(&edid_st->DTD[i], &timings);
+-/*		mark = dss_debug;
+-		dss_debug = 1;
+-		print_omap_video_timings(&timings);
+-		dss_debug = mark; */
++		get_edid_timing_info(&edid_st->DTD[i],
++			&(edid_p->detailed_timings[edid_p->num_dt]));
++
++		/*	print_omap_video_timings(&timings); */
++		if (edid_p->detailed_timings[edid_p->num_dt].pixel_clock != 0)
++			edid_p->num_dt++;
+ 	}
++
+ 	if (edid[0x7e] != 0x00) {
+ 		offset = edid[EDID_DESCRIPTOR_BLOCK1_ADDRESS + 2];
+ 		/* THDMIDBG(KERN_INFO "offset %x\n", offset); */
+@@ -777,48 +772,41 @@
+ 			for (i = 0; i < EDID_SIZE_BLOCK1_TIMING_DESCRIPTOR;
+ 									i++) {
+ 				THDMIDBG(KERN_INFO "Extension 1 Block %d", i);
+-				get_eedid_timing_info(addr, edid, &timings);
++				get_eedid_timing_info(addr, edid,
++				   &(edid_p->detailed_timings[edid_p->num_dt]));
+ 				addr += EDID_TIMING_DESCRIPTOR_SIZE;
+-/*				mark = dss_debug;
+-				dss_debug = 1;
+-				print_omap_video_timings(&timings);
+-				dss_debug = mark; */
++				/* print_omap_video_timings(&timings); */
++		if (edid_p->detailed_timings[edid_p->num_dt].pixel_clock != 0)
++			edid_p->num_dt++;
+ 			}
+ 		}
+ 	}
+-	hdmi_get_image_format(edid, img_format);
+-	/* THDMIDBG(KERN_INFO "%d audio length\n", img_format->length); */
+-	/*for (i = 0 ; i < img_format->length ; i++)
+-		 THDMIDBG(KERN_INFO "%d %d pref code\n",
+-			img_format->fmt[i].pref, img_format->fmt[i].code); */
+-
+-	hdmi_get_audio_format(edid, aud_format);
+-	/* THDMIDBG(KERN_INFO "%d audio length\n", aud_format->length); */
+-	/* for (i = 0 ; i < aud_format->length ; i++)
+-		 THDMIDBG(KERN_INFO "%d %d format num_of_channels\n",
+-			aud_format->fmt[i].format,
+-			aud_format->fmt[i].num_of_ch); */
+-
+-	hdmi_deep_color_support_info(edid, vsdb_format);
+-	/* THDMIDBG(KERN_INFO "%d deep color bit 30 %d  deep color 36 bit "
+-		"%d max tmds freq", vsdb_format->bit_30, vsdb_format->bit_36,
+-		vsdb_format->max_tmds_freq); */
+-
+-	hdmi_get_av_delay(edid, lat);
+-	/* THDMIDBG(KERN_INFO "%d vid_latency %d aud_latency "
+-		"%d interlaced vid latency %d interlaced aud latency",
+-		lat->vid_latency, lat->aud_latency,
+-		lat->int_vid_latency, lat->int_aud_latency); */
++	edid_p->is_hdmi_supported = hdmi_tv_hdmi_supported(edid);
++
++	if (0x0 != edid_p->is_hdmi_supported) {
++		hdmi_get_image_format(edid, &edid_p->supported_cea_vic);
++
++		hdmi_get_audio_format(edid, &edid_p->audio_support);
+ 
+-	/* THDMIDBG(KERN_INFO "YUV supported %d",
+-		    hdmi_tv_yuv_supported(edid)); */
++		hdmi_deep_color_support_info(edid, vsdb_format);
++		/* THDMIDBG(KERN_INFO "%d deep color bit 30 %d "
++			"deep color 36 bit %d max tmds freq",
++			vsdb_format->bit_30, vsdb_format->bit_36,
++			vsdb_format->max_tmds_freq); */
++
++		hdmi_get_av_delay(edid, lat);
++		/* THDMIDBG(KERN_INFO "%d vid_latency %d aud_latency "
++			"%d interlaced vid latency %d interlaced aud latency",
++			lat->vid_latency, lat->aud_latency,
++			lat->int_vid_latency, lat->int_aud_latency); */
++
++		edid_p->is_yuv_supported = hdmi_tv_yuv_supported(edid);
++	}
+ 
+ exit:
+-	kfree(img_format);
+-	kfree(aud_format);
+ 	kfree(vsdb_format);
+ 	kfree(lat);
+-	return 0;
++	return r;
+ }
+ 
+ #ifdef ENABLE_VENC_COLORBAR_TEST
+@@ -942,19 +930,43 @@
+ 		break;
+ 	case TI81XXHDMI_READ_EDID:
+ 		THDMIDBG("ioctl TI81XXHDMI_READ_EDID\n");
+-		if (hdmi_get_edid() != 0)
+-			return  -EFAULT;
+-/*		if (copy_to_user((void __user *)arg, &edid,
+-		    sizeof(struct HDMI_EDID)))*/
++		if (false == edid_set) {
++			mutex_lock(&hdmi.lock);
++
++			r = hdmi_get_edid();
++
++			mutex_unlock(&hdmi.lock);
++		} else {
++			THDMIDBG("Sinks EDID was already read-skip re-read\n");
++			THDMIDBG("Copying previously read EDID\n");
++			r = 0;
++		}
++
+ 		/*make sure arg is not NULL*/
+-		if (arg)
++		if ((r == 0) && (arg)) {
+ 			r = copy_to_user((void __user *)arg, &edid,
+ 					 sizeof(struct HDMI_EDID));
+-		if (r) {
+-			THDMIDBG("Error : copy_to_user, r = %d ", r);
+-			r = -EFAULT;
++			if (r) {
++				THDMIDBG("Error : copy_to_user, r = %d ", r);
++				r = -EFAULT;
++			}
+ 		}
+ 		break;
++	case TI81XXHDMI_GET_PARSED_EDID_INFO:
++		THDMIDBG("ioctl TI81XXHDMI_GET_PARSED_EDID_INFO\n");
++		mutex_lock(&hdmi.lock);
++
++		if (arg) {
++			r = copy_to_user((void __user *)arg, &parsed_edid,
++				 sizeof(struct ti81xxhdmi_sink_edid_parsed));
++			if (r) {
++				THDMIDBG("Error : copy_to_user, r = %d ", r);
++				r = -EFAULT;
++			}
++		}
++
++		mutex_unlock(&hdmi.lock);
++		break;
+ 	case TI81XXHDMI_CEC_ACTIVATE:
+ 		mutex_lock(&hdmi.lock);
+ 		if (hdmi.cec_state == HDMI_CEC_BYPASS) {
+@@ -1082,28 +1094,39 @@
+ 		}
+ 		mutex_unlock(&hdmi.lock);
+ 		break;
+-	case TI81XXHDMI_WAIT_FOR_HPD_CHANGE:
+-		r = -EFAULT;
+-		while (arg) {
+-			struct ti81xxhdmi_hpd_status *status =
+-				(struct ti81xxhdmi_hpd_status *) arg;
+-
+-			wait_event_interruptible(hdmi.hpd_changed,
+-					hdmi.hpd_update != 0);
+-		/* aquire lock again once we wake up */
+-			mutex_lock(&hdmi.lock);
+-			status->hpd_status = hdmi.irq_status.hpd_status;
+-			status->hpd_pin_status = hdmi.irq_status.hpd_pin_status;
+-			status->rsen_pin_status = hdmi.irq_status.rsen_pin_status;
+-			spin_lock_irqsave(&irqstatus_lock, flags);
+-			hdmi.hpd_update = 0;
+-			spin_unlock_irqrestore(&irqstatus_lock, flags);
+-			r = 0;
+-			mutex_unlock(&hdmi.lock);
+-			break;
++	case TI81XXHDMI_HDCP_ENABLE:
++		mutex_lock(&hdmi.lock);
++		if (hdmi.enable_ctl != 0){
++			r = hdmi.enable_ctl((void __user *)arg);
+ 		}
++		mutex_unlock(&hdmi.lock);
++		break;
++	case TI81XXHDMI_HDCP_DISABLE:
++		mutex_lock(&hdmi.lock);
++		if (hdmi.disable_ctl != 0){
++			hdmi.disable_ctl();
++		}
++		mutex_unlock(&hdmi.lock);
++		break;
++	case TI81XXHDMI_HDCP_GET_STATUS:
++		mutex_lock(&hdmi.lock);
++		if (hdmi.query_status_ctl != 0){
++			hdmi.query_status_ctl((void __user *)arg);
++		}
++		mutex_unlock(&hdmi.lock);
++		break;
++	case TI81XXHDMI_HDCP_WAIT_EVENT:
++		if (hdmi.wait_event_ctl != 0){
++			hdmi.wait_event_ctl((void __user *)arg);
++		}
++		break;
++	case TI81XXHDMI_HDCP_EVENT_DONE:
++		mutex_lock(&hdmi.lock);
++		if (hdmi.done_ctl != 0){
++			hdmi.done_ctl((void __user *)arg);
++		}
++		mutex_unlock(&hdmi.lock);
+ 		break;
+-
+ 	default:
+ 		r = -EINVAL;
+ 		THDMIDBG("Un-recoganized command, cmd = %d", cmd);
+@@ -1180,10 +1203,16 @@
+ 	hdmi.cfg.deep_color = HDMI_DEEP_COLOR_24BIT;
+ 	/*force HDMI output DVI if the TV does not support HDMI
+ 	  or TV connected*/
+-	if (hdmi_get_edid())
++	/* Note that, we need not wait for exclusive access, as the
++	 * function caller has already ensured the same.
++	 * i.e. hdmi.lock has been acquired
++	 */
++	/* If the EDID read fails, we fall back to supplied HDMI mode
++	 * HDMI / DVI 1/0 */
++	if (0 != hdmi_get_edid())
+ 		hdmi.cfg.hdmi_dvi   = hdmi.mode;
+ 	else
+-		hdmi.cfg.hdmi_dvi = (u16)hdmi_tv_hdmi_supported(edid);
++		hdmi.cfg.hdmi_dvi = (u16)parsed_edid.is_hdmi_supported;
+ 	THDMIDBG("Interface is %d [0:DVI, 1:HDMI]\n", hdmi.cfg.hdmi_dvi);
+ 	/* Start HDMI library */
+ 	hdmi_lib_enable(&hdmi.cfg);
+@@ -1203,6 +1232,7 @@
+ 	HDMI_W1_StartVideoFrame(TI81xx_HDMI_WP);
+ 
+ 	hdmi_set_irqs(0);
++
+ 	if (cpu_is_ti814x())
+ 		ti814x_set_clksrc_mux(1);
+ 
+@@ -1222,27 +1252,33 @@
+ 	return r;
+ }
+ 
+-#if 1
+ static void hdmi_work_queue(struct work_struct *ws)
+ {
+ 	struct hdmi_work_struct *work =
+ 		container_of(ws, struct hdmi_work_struct, work);
+-	int r  = work->r;
++	int r = work->r;
++
+ 
+-	if (r & TI81XXHDMI_HPD_MODIFY) {
++	if (r & HDMI_HPD_MODIFY) {
+ 		/* FIX ME When connected sink is removed, (not a toggel on HPD)
+ 			ensure to set hdmi.cec_state to HDMI_CEC_BYPASS
+ 			if this device was registered in the CEC n/w */
+ 		if (hdmi.cec_state != HDMI_CEC_BYPASS)
+ 			hdmi.cec_state = HDMI_CEC_BYPASS;
+ 
++		edid_set = false;
++
++#ifdef DISABLE_ENABLE_ON_HPD
+ 		hdmi_disable_display();
+ 		hdmi_enable_display();
++#endif
++
+ 	}
+ 
+ 	kfree(work);
+ }
+-#endif
++
++
+ static inline void hdmi_handle_irq_work(int r)
+ {
+ 	struct hdmi_work_struct *work;
+@@ -1259,20 +1295,32 @@
+ 	}
+ }
+ 
+-static void hdmi_cb_handler(struct hdmi_irq_status *irq_status)
++static bool hdmi_connected;
++static irqreturn_t hdmi_irq_handler(int irq, void *arg)
+ {
++	unsigned long flags;
++	int r = 0;
++
++
++
+ 	/* process interrupt in critical section to handle conflicts */
+-	if (irq_status->hpd_status & (TI81XXHDMI_HPD_MODIFY |
+-					TI81XXHDMI_FIRST_HPD |
+-					TI81XXHDMI_HPD_LOW   |
+-					TI81XXHDMI_HPD_HIGH)) {
+-		hdmi.hpd_update = 1;
+-		wake_up_interruptible(&hdmi.hpd_changed);
+-	}
+-#if 0
+-	hdmi_handle_irq_work(irq_status->hpd_status);
+-#endif
++	spin_lock_irqsave(&irqstatus_lock, flags);
++
++	HDMI_W1_HPD_handler(&r);
++
++	if (hdmi.isr_cb != 0)
++		hdmi.isr_cb(r);
++
++	if (r & HDMI_CONNECT)
++		hdmi_connected = true;
++	if (r & HDMI_DISCONNECT)
++		hdmi_connected = false;
+ 
++	spin_unlock_irqrestore(&irqstatus_lock, flags);
++
++	hdmi_handle_irq_work(r);
++
++	return IRQ_HANDLED;
+ }
+ 
+ static int hdmi_enable_display(void)
+@@ -1281,8 +1329,14 @@
+ 	mutex_lock(&hdmi.lock);
+ 
+ 	r = hdmi_start_display();
+-	hdmi_register_interrupt_cb(hdmi_cb_handler, &hdmi.irq_status);
++
++	r = request_irq(TI81XX_IRQ_HDMIINT, hdmi_irq_handler, 0,
++			"HDMI", (void *)0);
++
+ 	hdmi.status = TI81xx_EXT_ENCODER_ENABLED;
++	if (hdmi.frame_start_event != 0){
++		hdmi.frame_start_event();
++	}
+ 	mutex_unlock(&hdmi.lock);
+ 	return r;
+ }
+@@ -1294,12 +1348,17 @@
+ 	/* Free irq befor disabling the hardware else it will generate continous
+ 	   interrupts.
+ 	 */
+-	hdmi_unregister_interrupt_cb(hdmi_cb_handler, &hdmi.irq_status);
+-	hdmi_stop_display();
+-	/*setting to default only in case of disable and not suspend*/
+-	hdmi.mode = 1 ; /* HDMI */
++	if (TI81xx_EXT_ENCODER_DISABLED != hdmi.status) {
++		free_irq(TI81XX_IRQ_HDMIINT, NULL);
++
++		hdmi_stop_display();
++		/*setting to default only in case of disable and not suspend*/
++		hdmi.mode = 1 ; /* HDMI */
++
++		hdmi.status = TI81xx_EXT_ENCODER_DISABLED;
++		edid_set = false;
++	}
+ 
+-	hdmi.status = TI81xx_EXT_ENCODER_DISABLED;
+ 	mutex_unlock(&hdmi.lock);
+ }
+ 
+@@ -1329,12 +1388,23 @@
+ 
+ 	THDMIDBG("Initializing HDMI\n");
+ 	mutex_init(&hdmi.lock);
+-	init_waitqueue_head(&hdmi.hpd_changed);
+-	hdmi.hpd_update = 0;
+ 
+ 	/* Devices CEC default state */
+ 	hdmi.cec_state = HDMI_CEC_BYPASS;
+ 
++	/* Initialize globals */
++	hdmi.base_pll = 0;
++	hdmi.base_phy = 0;
++	hdmi.base_prcm = 0;
++
++	hdmi.isr_cb = 0;
++	hdmi.frame_start_event = 0;
++	hdmi.done_ctl = 0;
++	hdmi.wait_event_ctl = 0;
++	hdmi.query_status_ctl = 0;
++	hdmi.disable_ctl = 0;
++	hdmi.enable_ctl = 0;
++
+ 	if (cpu_is_ti814x()) {
+ 		hdmi.base_pll =  ioremap(TI814x_HDMI_PLL_BASE_ADDR, 0x80);
+ 		if (!hdmi.base_pll) {
+@@ -1349,7 +1419,8 @@
+ 		hdmi.base_phy = ioremap(TI814x_HDMI_PHY_0_REGS, 64);
+ 		if (!hdmi.base_phy) {
+ 			ERR("can't ioremap phy\n");
+-			return -ENOMEM;
++			r = -ENOMEM;
++			goto err_unmap;
+ 		}
+ 	}
+ 
+@@ -1357,14 +1428,16 @@
+ 		hdmi.base_phy = ioremap(TI816x_HDMI_PHY_0_REGS, 64);
+ 		if (!hdmi.base_phy) {
+ 			ERR("can't ioremap phy\n");
+-			return -ENOMEM;
++			r = -ENOMEM;
++			goto err_unmap;
+ 		}
+ 	}
+ 
+ 	hdmi.base_prcm =  ioremap(PRCM_0_REGS, 0x500);
+ 	if (!hdmi.base_prcm) {
+ 		ERR("can't ioremap PRCM 0\n");
+-		return -ENOMEM;
++			r = -ENOMEM;
++			goto err_unmap;
+ 	}
+ 
+ 
+@@ -1377,12 +1450,17 @@
+ 
+ 	hdmi_lib_init();
+ 
++#ifdef CONFIG_TI81XX_HDMI_HDCP
++	hdcp_init();
++#endif
++
+ 	hdmi_major = MAJOR(hdmi_dev_id);
+ 
+ 	r = alloc_chrdev_region(&hdmi_dev_id, 0, 1, "onchip_hdmi_device");
+ 	if (r) {
+ 		THDMIDBG(KERN_WARNING "HDMI: Cound not register char device\n");
+-		return -ENOMEM;
++		r = -ENOMEM;
++		goto err_uninit_lib;
+ 	}
+ 	/* initialize character device */
+ 	cdev_init(&hdmi_cdev, &hdmi_fops);
+@@ -1393,8 +1471,8 @@
+ 	r = cdev_add(&hdmi_cdev, hdmi_dev_id, 1);
+ 	if (r) {
+ 		THDMIDBG(KERN_WARNING "HDMI: Could not add hdmi char driver\n");
++		r = -ENOMEM;
+ 		goto err_unregister_chrdev;
+-		return -ENOMEM;
+ 	}
+ 	irq_wq = create_singlethread_workqueue("HDMI WQ");
+ 
+@@ -1441,6 +1519,16 @@
+ 	cdev_del(&hdmi_cdev);
+ err_unregister_chrdev:
+ 	unregister_chrdev_region(hdmi_dev_id, 1);
++err_uninit_lib:
++	hdmi_lib_exit();
++	hdcp_exit();
++err_unmap:
++	if (hdmi.base_pll)
++		iounmap(hdmi.base_pll);
++	if (hdmi.base_phy)
++		iounmap(hdmi.base_phy);
++	if (hdmi.base_prcm)
++		iounmap(hdmi.base_prcm);
+ 
+ 	return r;
+ }
+@@ -1585,8 +1673,15 @@
+ 		return -1;
+ 	hpd_state = hdmi_get_hpd_pin_state();
+ 
+-	if (hdmi_get_edid() != 0)
++	mutex_lock(&hdmi.lock);
++
++
++	if (0 != hdmi_get_edid()) {
++		mutex_unlock(&hdmi.lock);
+ 		return -1;
++	}
++
++	mutex_unlock(&hdmi.lock);
+ 
+ 	memcpy(inbuf, edid, HDMI_EDID_MAX_LENGTH);
+ 	return HDMI_EDID_MAX_LENGTH;
+Index: kernel/linux-2.6.37-psp04.04.00.01/include/linux/mmc/host.h
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/include/linux/mmc/host.h	2014-08-07 17:02:50.985896709 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/include/linux/mmc/host.h	2014-08-07 17:02:50.977896709 -0600
+@@ -88,6 +88,15 @@
+ 	 */
+ 	int (*enable)(struct mmc_host *host);
+ 	int (*disable)(struct mmc_host *host, int lazy);
++	/*
++	 * It is optional for the host to implement pre_req and post_req in
++	 * order to support double buffering of requests (prepare one
++	 * request while another request is active).
++	 */
++	void	(*post_req)(struct mmc_host *host, struct mmc_request *req,
++			    int err);
++	void	(*pre_req)(struct mmc_host *host, struct mmc_request *req,
++			   bool is_first_req);
+ 	void	(*request)(struct mmc_host *host, struct mmc_request *req);
+ 	/*
+ 	 * Avoid calling these three functions too often or in a "fast path",
+@@ -122,6 +131,15 @@
+ struct mmc_card;
+ struct device;
+ 
++struct mmc_async_req {
++	/* active mmc request */
++	struct mmc_request	*mrq;
++	/*
++	 * Check error status of completed mmc request.
++	 * Returns 0 if success otherwise non zero.
++	 */
++	int (*err_check) (struct mmc_card *, struct mmc_async_req *);
++};
+ struct mmc_host {
+ 	struct device		*parent;
+ 	struct device		class_dev;
+@@ -209,6 +227,7 @@
+ 	int			claim_cnt;	/* "claim" nesting count */
+ 
+ 	struct delayed_work	detect;
++	int		detect_change;	/* card detect flag */
+ 
+ 	const struct mmc_bus_ops *bus_ops;	/* current bus driver */
+ 	unsigned int		bus_refs;	/* reference counter */
+@@ -228,6 +247,7 @@
+ #endif
+ 
+ 	struct dentry		*debugfs_root;
++	struct mmc_async_req	*areq;		/* active async req */
+ 
+ 	unsigned long		private[0] ____cacheline_aligned;
+ };
+Index: kernel/linux-2.6.37-psp04.04.00.01/net/core/dev.c
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/net/core/dev.c	2014-08-07 17:02:50.985896709 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/net/core/dev.c	2014-08-07 17:02:50.981896709 -0600
+@@ -4639,6 +4639,7 @@
+ 		    cmd == SIOCBRADDIF ||
+ 		    cmd == SIOCBRDELIF ||
+ 		    cmd == SIOCSHWTSTAMP ||
++		    cmd == SIOCSWITCHCONFIG ||
+ 		    cmd == SIOCWANDEV) {
+ 			err = -EOPNOTSUPP;
+ 			if (ops->ndo_do_ioctl) {
+@@ -4813,6 +4814,14 @@
+ 		 * Not applicable in our case */
+ 	case SIOCSIFLINK:
+ 		return -EINVAL;
++	case SIOCSWITCHCONFIG:
++		dev_load(net, ifr.ifr_name);
++		rtnl_lock();
++		ret = dev_ifsioc(net, &ifr, cmd);
++		rtnl_unlock();
++		if (!ret && copy_to_user(arg, &ifr, sizeof(struct ifreq)))
++			ret = -EFAULT;
++		return ret;
+ 
+ 	/*
+ 	 *	Unknown or private ioctl.
+Index: kernel/linux-2.6.37-psp04.04.00.01/sound/soc/davinci/davinci-evm.c
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/sound/soc/davinci/davinci-evm.c	2014-08-07 17:02:50.985896709 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/sound/soc/davinci/davinci-evm.c	2014-08-07 17:02:50.981896709 -0600
+@@ -66,6 +66,8 @@
+ 				machine_is_ti8148evm() ||
+ 				machine_is_dm385evm())
+ 		sysclk = 24576000;
++	else if (machine_is_ti811xevm())
++		sysclk = 20000000;
+ 	else
+ 		return -EINVAL;
+ 
+@@ -307,7 +309,8 @@
+ 
+ static void ti81xx_evm_dai_fixup(void)
+ {
+-	if (machine_is_ti8168evm() || machine_is_ti8148evm()) {
++	if (machine_is_ti8168evm() || machine_is_ti8148evm()
++				||  machine_is_ti811xevm()) {
+ 		ti81xx_evm_dai[0].cpu_dai_name = "davinci-mcasp.2";
+ 	} else if (machine_is_dm385evm()) {
+ 		ti81xx_evm_dai[0].cpu_dai_name = "davinci-mcasp.1";
+@@ -342,7 +345,8 @@
+ 		evm_snd_dev_data = &da850_snd_soc_card;
+ 		index = 0;
+ 	} else if (machine_is_ti8168evm() || machine_is_ti8148evm()
+-					|| machine_is_dm385evm()) {
++					|| machine_is_dm385evm()
++					|| machine_is_ti811xevm()) {
+ 		ti81xx_evm_dai_fixup();
+ 		evm_snd_dev_data = &ti81xx_snd_soc_card;
+ 		index = 0;
+Index: kernel/linux-2.6.37-psp04.04.00.01/include/linux/vps_display.h
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/include/linux/vps_display.h	2014-08-07 17:02:50.985896709 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/include/linux/vps_display.h	2014-08-07 17:02:50.981896709 -0600
+@@ -153,6 +153,7 @@
+ 	/**< Pointer to the deinterlacer configuration used for
+ 	*  DEI drivers. This parameter should be set to NULL for
+ 	*  DEI HQ drivers. */
++	struct vps_cropconfig          *deisccropcfg;
+ 	struct vps_cropconfig          deicropcfg;
+ 	/**< Cropping configuration for the DEI scalar. */
+ 	u32                            startx;

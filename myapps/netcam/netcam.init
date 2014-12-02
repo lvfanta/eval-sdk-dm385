@@ -1,0 +1,15 @@
+#!/bin/sh
+
+cat << EOF > /tmp/netcam.info
+#NetCam server configuration
+[info]
+ip: `ifconfig eth0 | awk -F '[: ]' '/inet addr/{print $13}'`
+hostname: `uname -n`
+kernel: `uname -s`
+version: `uname -r`
+build: `uname -v`
+os: `uname -o`
+mach: `uname -m`
+EOF
+
+

@@ -1,0 +1,181 @@
+Index: gst-plugins-good-0.10.31/src/gst/rtp/gstrtph264pay.c
+===================================================================
+--- gst-plugins-good-0.10.31.orig/src/gst/rtp/gstrtph264pay.c	2012-02-20 13:41:46.000000000 -0600
++++ gst-plugins-good-0.10.31/src/gst/rtp/gstrtph264pay.c	2014-04-23 12:53:52.449911512 -0600
+@@ -120,6 +120,10 @@
+ static GstStateChangeReturn gst_basertppayload_change_state (GstElement *
+     element, GstStateChange transition);
+ 
++#ifdef NEON_MEMCPY
++void *memcpy_neon(void *, const void *, size_t);
++#endif
++
+ GST_BOILERPLATE (GstRtpH264Pay, gst_rtp_h264_pay, GstBaseRTPPayload,
+     GST_TYPE_BASE_RTP_PAYLOAD);
+ 
+@@ -502,7 +506,11 @@
+ 
+       /* make a buffer out of it and add to SPS list */
+       sps_buf = gst_buffer_new_and_alloc (nal_size);
++#ifdef NEON_MEMCPY
++      memcpy_neon (GST_BUFFER_DATA (sps_buf), data, nal_size);
++#else
+       memcpy (GST_BUFFER_DATA (sps_buf), data, nal_size);
++#endif
+       rtph264pay->sps = g_list_append (rtph264pay->sps, sps_buf);
+ 
+       data += nal_size;
+@@ -534,7 +542,11 @@
+ 
+       /* make a buffer out of it and add to PPS list */
+       pps_buf = gst_buffer_new_and_alloc (nal_size);
++#ifdef NEON_MEMCPY
++      memcpy_neon (GST_BUFFER_DATA (pps_buf), data, nal_size);
++#else
+       memcpy (GST_BUFFER_DATA (pps_buf), data, nal_size);
++#endif
+       rtph264pay->pps = g_list_append (rtph264pay->pps, pps_buf);
+ 
+       data += nal_size;
+@@ -731,7 +743,11 @@
+ 
+     if (updated) {
+       sps_buf = gst_buffer_new_and_alloc (sps_len);
++#ifdef NEON_MEMCPY
++      memcpy_neon (GST_BUFFER_DATA (sps_buf), sps, sps_len);
++#else
+       memcpy (GST_BUFFER_DATA (sps_buf), sps, sps_len);
++#endif
+ 
+       if (payloader->sps) {
+         /* replace old buffer */
+@@ -762,7 +778,11 @@
+ 
+     if (updated) {
+       pps_buf = gst_buffer_new_and_alloc (pps_len);
++#ifdef NEON_MEMCPY
++      memcpy_neon (GST_BUFFER_DATA (pps_buf), pps, pps_len);
++#else
+       memcpy (GST_BUFFER_DATA (pps_buf), pps, pps_len);
++#endif
+ 
+       if (payloader->pps) {
+         /* replace old buffer */
+@@ -918,7 +938,11 @@
+             GST_BUFFER_DATA (buffer_orig), size);
+       else {
+         paybuf = gst_buffer_new_and_alloc (size);
++#ifdef NEON_MEMCPY
++        memcpy_neon (GST_BUFFER_DATA (paybuf), data, size);
++#else
+         memcpy (GST_BUFFER_DATA (paybuf), data, size);
++#endif
+       }
+ 
+       list = gst_buffer_list_new ();
+@@ -936,7 +960,11 @@
+     } else {
+       payload = gst_rtp_buffer_get_payload (outbuf);
+       GST_DEBUG_OBJECT (basepayload, "Copying %d bytes to outbuf", size);
++#ifdef NEON_MEMCPY
++      memcpy_neon (payload, data, size);
++#else
+       memcpy (payload, data, size);
++#endif
+ 
+       ret = gst_basertppayload_push (basepayload, outbuf);
+     }
+@@ -1010,7 +1038,11 @@
+               GST_BUFFER_DATA (buffer_orig) + pos, limitedSize);
+         else {
+           paybuf = gst_buffer_new_and_alloc (limitedSize);
++#ifdef NEON_MEMCPY
++          memcpy_neon (GST_BUFFER_DATA (paybuf), data + pos, limitedSize);
++#else
+           memcpy (GST_BUFFER_DATA (paybuf), data + pos, limitedSize);
++#endif
+         }
+ 
+         /* create a new group to hold the header and the payload */
+@@ -1021,7 +1053,11 @@
+         gst_buffer_list_iterator_add (it, paybuf);
+ 
+       } else {
++#ifdef NEON_MEMCPY
++        memcpy_neon (&payload[2], data + pos, limitedSize);
++#else
+         memcpy (&payload[2], data + pos, limitedSize);
++#endif
+         GST_DEBUG_OBJECT (basepayload,
+             "recorded %d payload bytes into packet iteration=%d",
+             limitedSize + 2, ii);
+Index: gst-plugins-good-0.10.31/src/gst/rtp/gstrtpjpegpay.c
+===================================================================
+--- gst-plugins-good-0.10.31.orig/src/gst/rtp/gstrtpjpegpay.c	2011-12-30 07:59:10.000000000 -0600
++++ gst-plugins-good-0.10.31/src/gst/rtp/gstrtpjpegpay.c	2014-04-23 12:52:23.133911523 -0600
+@@ -236,6 +236,9 @@
+ static GstFlowReturn gst_rtp_jpeg_pay_handle_buffer (GstBaseRTPPayload * pad,
+     GstBuffer * buffer);
+ 
++#ifdef NEON_MEMCPY
++void *memcpy_neon(void *, const void *, size_t);
++#endif
+ GST_BOILERPLATE (GstRtpJPEGPay, gst_rtp_jpeg_pay, GstBaseRTPPayload,
+     GST_TYPE_BASE_RTP_PAYLOAD);
+ 
+@@ -779,19 +782,31 @@
+ #else
+     jpeg_header.offset = offset;
+ #endif
++#ifdef NEON_MEMCPY
++    memcpy_neon (payload, &jpeg_header, sizeof (jpeg_header));
++#else
+     memcpy (payload, &jpeg_header, sizeof (jpeg_header));
++#endif
+     payload += sizeof (jpeg_header);
+     payload_size -= sizeof (jpeg_header);
+ 
+     if (dri_found) {
++#ifdef NEON_MEMCPY
++      memcpy_neon (payload, &restart_marker_header, sizeof (restart_marker_header));
++#else
+       memcpy (payload, &restart_marker_header, sizeof (restart_marker_header));
++#endif
+       payload += sizeof (restart_marker_header);
+       payload_size -= sizeof (restart_marker_header);
+     }
+ 
+     /* only send quant table with first packet */
+     if (G_UNLIKELY (quant_data_size > 0)) {
++#ifdef NEON_MEMCPY
++      memcpy_neon (payload, &quant_header, sizeof (quant_header));
++#else
+       memcpy (payload, &quant_header, sizeof (quant_header));
++#endif
+       payload += sizeof (quant_header);
+ 
+       /* copy the quant tables for luma and chrominance */
+@@ -801,7 +816,11 @@
+ 
+         qt = info[i].qt;
+         qsize = tables[qt].size;
++#ifdef NEON_MEMCPY
++        memcpy_neon (payload, tables[qt].data, qsize);
++#else
+         memcpy (payload, tables[qt].data, qsize);
++#endif
+ 
+         GST_LOG_OBJECT (pay, "component %d using quant %d, size %d", i, qt,
+             qsize);
+@@ -826,7 +845,11 @@
+       gst_buffer_list_iterator_add (it, outbuf);
+       gst_buffer_list_iterator_add (it, paybuf);
+     } else {
++#ifdef NEON_MEMCPY
++      memcpy_neon (payload, data, payload_size);
++#else
+       memcpy (payload, data, payload_size);
++#endif
+       ret = gst_basertppayload_push (basepayload, outbuf);
+       if (ret != GST_FLOW_OK)
+         break;

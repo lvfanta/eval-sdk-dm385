@@ -1,0 +1,40 @@
+Index: kernel/linux-2.6.37-psp04.04.00.01/drivers/media/video/ti81xx/ti81xxvid_main.c
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/drivers/media/video/ti81xx/ti81xxvid_main.c	2014-04-17 17:15:49.434424196 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/drivers/media/video/ti81xx/ti81xxvid_main.c	2014-04-17 17:24:18.746448071 -0600
+@@ -1804,13 +1804,15 @@
+ {
+ 	struct ti81xxvideo_fh *fh = priv;
+ 	struct ti81xx_vidout_dev *vout = fh->voutdev;
++	int r = 0;
+ 
+ 	v4l2_dbg(1, debug, &vout->vid_dev->v4l2_dev,
+ 		"VIDOUT%d: query buffer\n",
+ 		vout->vid);
+ 	mutex_lock(&vout->lock);
+-	return videobuf_querybuf(&vout->vbq, b);
++	r = videobuf_querybuf(&vout->vbq, b);
+ 	mutex_unlock(&vout->lock);
++	return r;
+ }
+ 
+ static int vidioc_qbuf(struct file *file, void *priv,
+Index: kernel/linux-2.6.37-psp04.04.00.01/drivers/media/video/ti81xx/ti81xxvin_main.c
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/drivers/media/video/ti81xx/ti81xxvin_main.c	2014-04-17 17:15:49.494424199 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/drivers/media/video/ti81xx/ti81xxvin_main.c	2014-04-17 17:25:42.802452009 -0600
+@@ -2450,11 +2450,13 @@
+ 	struct ti81xxvin_fh *fh = filep->private_data;
+ 	struct ti81xxvin_instance_obj *inst = fh->instance;
+ 	struct ti81xxvin_buffer_obj *buf_obj = &(inst->buf_obj);
++	int r = 0;
+ 
+ 	ti81xxvin_dbg(2, debug, "ti81xxvin_mmap\n");
+ 	mutex_lock(&buf_obj->buf_lock);
+-	return videobuf_mmap_mapper(&buf_obj->buffer_queue, vma);
++	r = videobuf_mmap_mapper(&buf_obj->buffer_queue, vma);
+ 	mutex_unlock(&buf_obj->buf_lock);
++	return r;
+ }
+ /* TI81xx capture file operations */
+ static struct v4l2_file_operations hdvpss_fops = {

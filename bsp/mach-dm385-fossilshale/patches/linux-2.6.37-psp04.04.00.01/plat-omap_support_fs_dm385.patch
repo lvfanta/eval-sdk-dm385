@@ -1,0 +1,222 @@
+Index: kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/asp.h
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/asp.h	2014-08-06 13:48:08.277886824 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/asp.h	2014-08-06 13:48:08.269886824 -0600
+@@ -47,6 +47,20 @@
+ 	unsigned enable_channel_combine:1;
+ 	unsigned sram_size_playback;
+ 	unsigned sram_size_capture;
++	/*
++	 * If McBSP peripheral gets the clock from an external pin,
++	 * there are three chooses, that are MCBSP_CLKX, MCBSP_CLKR
++	 * and MCBSP_CLKS.
++	 * Depending on different hardware connections it is possible
++	 * to use this setting to change the behaviour of McBSP
++	 * driver. The dm365_clk_input_pin enum is available for dm365
++	 *
++	 * Codec clock can drive from the MCA_AHCLKX output
++	 * This needs the McASP pin direction configurations
++	 * as output and the soc pin-mux.This can be used to
++	 * configure the McASP driver PIN_DIR
++	 */
++	int clk_input_pin;
+ 
+ 	/* McASP specific fields */
+ 	int tdm_slots;
+@@ -63,6 +77,16 @@
+ 	MCASP_VERSION_2,	/* DA8xx/OMAPL1x/DM81xx */
+ };
+ 
++/*
++ * codec clock drive from the AHCLKX out from the SoC
++ * This need the McASP pin direction configurations
++ * as out put and the soc pin-mux.This can be used to
++ * configure the McASP driver PIN_DIR
++ */
++enum ti81xx_clk_input_pin {
++	MCASP_AHCLKX_IN = 0,	/*TI81XX*/
++	MCASP_AHCLKX_OUT,
++};
+ #define INACTIVE_MODE	0
+ #define TX_MODE		1
+ #define RX_MODE		2
+Index: kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/io.h
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/io.h	2014-08-06 13:48:08.277886824 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/io.h	2014-08-06 13:48:08.269886824 -0600
+@@ -88,6 +88,12 @@
+ 
+ #define TI81XX_L2_MC_IO_OFFSET		0xa4000000
+ #define TI81XX_L2_MC_IO_ADDRESS(pa)	IOMEM((pa) + TI81XX_L2_MC_IO_OFFSET)
++/*
++ * Required to map if using workaround for draining async bridge path draining
++ * on entering WFI
++ */
++#define TI81XX_DRAM_BARRIER_VA		0xfe500000
++#define TI81XX_SRAM_BARRIER_VA		0xfe600000
+ 
+ /*
+  * ----------------------------------------------------------------------------
+Index: kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/irqs-ti81xx.h
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/irqs-ti81xx.h	2014-08-06 13:48:08.277886824 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/irqs-ti81xx.h	2014-08-06 13:48:08.269886824 -0600
+@@ -48,6 +48,10 @@
+ #define TI81XX_IRQ_TPPSS_DMABS0	25
+ #define TI81XX_IRQ_TPPSS_ERR0	26
+ #define TI81XX_IRQ_TPPSS_ERR1	27
++#define TI811X_IRQ_GPIO_4A	92
++#define TI811X_IRQ_GPIO_4B	93
++#define TI811X_IRQ_GPIO_5A	94
++#define TI811X_IRQ_GPIO_5B	95
+ #define TI816X_IRQ_TPPSS_ERR2	28
+ #define TI814X_IRQ_SD1		28
+ #define TI816X_IRQ_TPPSS_ERR3	29
+Index: kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/nand.h
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/nand.h	2014-08-06 13:48:08.277886824 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/nand.h	2014-08-06 13:48:08.269886824 -0600
+@@ -18,6 +18,10 @@
+ 	NAND_OMAP_PREFETCH_IRQ		/* prefetch enabled irq mode */
+ };
+ 
++enum nand_bussize {
++	NAND_OMAP_BUS_8,
++	NAND_OMAP_BUS_16
++};
+ struct omap_nand_platform_data {
+ 	unsigned int		options;
+ 	int			cs;
+@@ -31,8 +35,10 @@
+ 	int			gpmc_irq;
+ 	enum nand_io		xfer_type;
+ 	unsigned long		phys_base;
+-	int			devsize;
++	enum nand_bussize		bussize;
+ 	enum omap_ecc           ecc_opt;
++	int			devsize;
++
+ };
+ 
+ /* minimum size for IO mapping */
+Index: kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/system.h
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/system.h	2014-08-06 13:48:08.277886824 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/system.h	2014-08-06 13:48:08.269886824 -0600
+@@ -17,10 +17,13 @@
+ extern void voiceblue_reset(void);
+ #endif
+ 
++extern void omap_bus_sync(void);
+ static inline void arch_idle(void)
+ {
+-	if (!cpu_is_ti814x() || (omap_rev() > TI8148_REV_ES1_0))
++	if (!cpu_is_ti814x() || cpu_is_dm385() ||
++			(omap_rev() > TI8148_REV_ES1_0)) {
+ 		cpu_do_idle();
++	}
+ }
+ 
+ static inline void omap1_arch_reset(char mode, const char *cmd)
+Index: kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/ti81xx.h
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/ti81xx.h	2014-08-06 13:48:08.277886824 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/ti81xx.h	2014-08-06 13:48:08.269886824 -0600
+@@ -48,6 +48,8 @@
+ #define TI81XX_GPIO1_BASE	0x4804C000
+ #define TI814X_GPIO2_BASE	0x481AC000
+ #define TI814X_GPIO3_BASE	0x481AE000
++#define TI811X_GPIO4_BASE	0x48420000
++#define TI811X_GPIO5_BASE	0x48422000
+ 
+ #define TI816X_SR0_BASE		0x48188000
+ #define TI816X_SR1_BASE		0x4818A000
+@@ -73,4 +75,5 @@
+ #define TI81XX_RTC_BASE		0x480C0000
+ 
+ #define TI81XX_ELM_BASE		0x48080000
++#define TI81XX_OCMC0_BASE	0x40300000
+ #endif /* __ASM_ARCH_TI81XX_H */
+Index: kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/usb.h
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/usb.h	2014-08-06 13:48:08.277886824 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/usb.h	2014-08-06 13:48:08.269886824 -0600
+@@ -71,6 +71,9 @@
+ 	unsigned extvbus:1;
+ 	u8	instances;
+ 	u8	babble_ctrl;
++	u8	txfifo_intr_enable;
++	u8	usbphy_rxcalib_enable;
++	u8	phyctrl_enable;
+ 	void	(*set_phy_power)(u8 id, u8 on);
+ 	void	(*clear_irq)(void);
+ 	void	(*set_mode)(u8 mode);
+Index: kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/gpio.c
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/gpio.c	2014-08-06 13:48:08.277886824 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/gpio.c	2014-08-06 13:48:08.273886824 -0600
+@@ -305,7 +305,7 @@
+ 		return 0;
+ 	if (cpu_is_omap7xx() && gpio < 192)
+ 		return 0;
+-	if ((cpu_is_omap2420() || cpu_is_ti814x()) && gpio < 128)
++	if ((cpu_is_omap2420() || cpu_is_ti814x()) && gpio < 192)
+ 		return 0;
+ 	if (cpu_is_omap2430() && gpio < 160)
+ 		return 0;
+Index: kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/clock.h
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/clock.h	2014-08-06 13:48:08.277886824 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/include/plat/clock.h	2014-08-06 13:48:08.273886824 -0600
+@@ -189,6 +189,7 @@
+ 	u8		flags;
+ 	/* data fields required by TI814X ADPLLs */
+ 	u8		dpll_id;
++	void __iomem	*base;
+ 	void __iomem	*div_m2n_reg;
+ 	u32		div_m2_mask;
+ 	u32		div_n_mask;
+@@ -358,7 +359,7 @@
+ 	u8			enable_bit;
+ 	s8			usecount;
+ 	u8			fixed_div;
+-	u8			flags;
++	u16			flags;
+ #ifdef CONFIG_ARCH_OMAP2PLUS
+ 	void __iomem		*clksel_reg;
+ 	u32			clksel_mask;
+Index: kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/common.c
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/common.c	2014-08-06 11:45:27.094222947 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/arch/arm/plat-omap/common.c	2014-08-06 14:32:18.433765813 -0600
+@@ -15,6 +15,9 @@
+ #include <linux/init.h>
+ #include <linux/io.h>
+ #include <linux/omapfb.h>
++#include <linux/memblock.h>
++
++#include <asm/mach/map.h>
+ 
+ #include <plat/common.h>
+ #include <plat/board.h>
+@@ -65,6 +68,20 @@
+ 
+ void  __init ti81xx_reserve(void)
+ {
++	extern phys_addr_t dram_sync_phys;
++	u32 size = ALIGN(PAGE_SIZE, SZ_1M);
++
++	dram_sync_phys = memblock_alloc(size, SZ_1M);
++
++	if (!dram_sync_phys) {
++		pr_err("%s: ### failed to reserve ddr\n", __func__);
++	} else {
++		pr_info("%s: ### Reserved DDR region @%p\n", __func__,
++				(void *)dram_sync_phys);
++	}
++
++	memblock_free(dram_sync_phys, size);
++	memblock_remove(dram_sync_phys, size);
+ 	ti81xxfb_reserve_sdram_memblock();
+ 	ti81xx_pcie_mem_reserve_sdram_memblock();
+ }

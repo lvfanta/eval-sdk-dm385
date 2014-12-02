@@ -1,0 +1,111 @@
+## Copyright (C) 2013 Ridgerun
+# rtsc Class simplifies the integration and build
+# of software content for remote execution.
+
+#! \defgroup rtsc_class Real Time Software Components Class
+#! \ingroup classes
+#! \section intro Introduction
+#! The RTSC class provides logic to build RTSC packages to easily integrate them with third party applications.
+#!
+#! \section public_params Public Parameters
+#! The following is a list of parameters that may be set according to an application's specific requirements.
+#! <ul>
+#! <li>
+#! <b>RTSC_CODEC_PATH</b>: A space separated list of codec package paths.
+#!
+#! <li>
+#! <b>RTSC_FIRMWARE_PATH</b>: A space separated list of Firmware package paths.
+#!
+#! <li>
+#! <b>RTSC_CONFIGURO_PATH</b>: Flags configuration package path.
+#!
+#! <li>
+#! <b>RTSC_CONFIGURO_FILE</b>: Flags configurationf file for client-side build.
+#!
+#! <li>
+#! <b>RTSC_SERVER_BIN</b>: The name of the server binary to be installed on the file system.
+#!
+#! <li>
+#! <b>RTSC_CFLAGS</b>: This variable will hold the appropriate codec and server compilation flags that can be used to build third party applications. 
+#!
+#! <li>
+#! <b>RTSC_LDFLAGS</b>: This variable will hold the appropriate codec and server linker flags that can be used to link third party applications. 
+#! </ul>
+
+export BUILDING_FROM_RR_SDK=yes
+
+include $(DEVDIR)/fs/Apps.defs
+include $(EZSDK)/Rules.make
+
+XDCPATH = $(XDAIS_INSTALL_DIR)/packages;$(CE_INSTALL_DIR)/packages;$(FC_INSTALL_DIR)/packages;$(EDMA3LLD_INSTALL_DIR)/packages;$(CMEM_INSTALL_DIR)/packages;$(SYSBIOS_INSTALL_DIR)/packages;$(SYSLINK_INSTALL_DIR)/packages;$(IPC_INSTALL_DIR)/packages;$(OSAL_INSTALL_DIR)/packages;$(UIA_INSTALL_DIR)/packages;$(KERNEL_INSTALL_DIR);$(LINUX_DEVKIT_DIR);$(RTSC_BASE_DIR)/packages;$(RTSC_LIBRARIES)/packages;
+export XDCPATH
+
+XDCARGS = $(XDC_BUILD_TARGET) $(XDC_BUILD_TOOLCHAIN) $(XDC_BUILD_PLATFORM)
+
+ifeq ($(VERBOSE),1)
+XDCOPTIONS=-v
+else
+XDCOPTIONS=
+endif
+
+XDCBUILDCFG= $(DEVDIR)/bsp/arch/rtsc/system.bld
+XSBUILDCFG= $(DEVDIR)/bsp/arch/rtsc/configuro.bld
+
+.PHONY: rtsc_flags firmware_build codec_build rtsc_clean codec_clean firmware_clean configuro_clean rtsc_install codec_package server_package
+
+rtsc_flags: $(PATCHED_FLAG) firmware_build
+ifneq ($(RTSC_CONFIGURO_PATH),)
+	$(XDC_INSTALL_DIR)/xs xdc.tools.configuro -c $(MVTOOL_DIR) -o $(RTSC_CONFIGURO_PATH) -b $(XSBUILDCFG) $(RTSC_CONFIGURO_FILE)
+else
+	$(ECHO) "Real time flags not built, RTSC_CONFIGURO_PATH not defined"
+endif
+
+RTSC_CFLAGS=`cat $(RTSC_CONFIGURO_PATH)/compiler.opt`
+
+RTSC_LDFLAGS=-Wl,$(RTSC_CONFIGURO_PATH)/linker.cmd
+
+codec_build:
+ifneq ($(RTSC_CODEC_PATH),)
+	"$(XDC_INSTALL_DIR)/xdc" release XDCOPTIONS=$(XDCOPTIONS) XDCBUILDCFG="$(XDCBUILDCFG)" XDCARGS="$(XDCARGS)" -P $(RTSC_CODEC_PATH)
+else
+	$(ECHO) "Not building codec, RTSC_CODEC_PATH not defined"
+endif
+
+firmware_build: codec_build
+ifneq ($(RTSC_FIRMWARE_PATH),)
+	"$(XDC_INSTALL_DIR)/xdc" release XDCOPTIONS=$(XDCOPTIONS) XDCBUILDCFG="$(XDCBUILDCFG)" XDCARGS="$(XDCARGS)" -P $(RTSC_FIRMWARE_PATH)
+else
+	$(ECHO) "Not building Firmware, RTSC_FIRMWARE_PATH not defined"
+endif
+
+rtsc_install:
+	if [ -a $(RTSC_FIRMWARE_PATH)/$(RTSC_SERVER_BIN) ]; then \
+	echo "Executable file: $(RTSC_SERVER_BIN) exists, installing on filesystem .."; \
+	install $(RTSC_FIRMWARE_PATH)/$(RTSC_SERVER_BIN) $(FSROOT) ; \
+	else \
+	echo "Executable file: $(RTSC_SERVER_BIN) does not exists."; \
+	fi;
+
+#
+rtsc_clean: configuro_clean firmware_clean codec_clean
+
+codec_clean:
+ifneq ($(RTSC_CODEC_PATH),)
+	"$(XDC_INSTALL_DIR)/xdc" clean -P $(RTSC_CODEC_PATH)
+endif
+
+firmware_clean:
+ifneq ($(RTSC_FIRMWARE_PATH),)
+	"$(XDC_INSTALL_DIR)/xdc" clean -P $(RTSC_FIRMWARE_PATH)
+endif
+
+configuro_clean:
+ifneq ($(RTSC_CONFIGURO_PATH),)
+	"$(XDC_INSTALL_DIR)/xdc" clean -P $(RTSC_CONFIGURO_PATH)
+endif
+
+codec_package:
+	$(XDC_INSTALL_DIR)/xs --xdcpath="$(XDCPATH)" ti.sdo.ce.wizards.gencodecpkg
+
+server_package:
+	$(XDC_INSTALL_DIR)/xs --xdcpath="$(XDCPATH)" ti.sdo.ce.wizards.genserver

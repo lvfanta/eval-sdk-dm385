@@ -1,0 +1,37 @@
+#!/bin/bash
+# 
+# This script runs custom logic to fix problems with 
+# specific linux distributions, such as needing to use
+# a different version of a host tool.
+#
+# oscheck needs to be run first to create $DEVDIR/.system.id
+
+# Set DD to the absolute path for DEVDIR
+CWD=`pwd`
+cd $DEVDIR
+DD=`pwd`
+cd $CWD
+
+if [ ! -r  $DD/.distro.id ] ; then
+    echo "ERROR: Can not find Linux distribution ID files ($DD/.distro.id)"
+    exit 1
+fi
+
+if [ ! -r  $DD/.system.id ] ; then
+    echo "ERROR: Can not find system ID files ($DD/.system.id)"
+    exit 1
+fi
+
+DISTRO=`cat $DD/.distro.id`
+SYSID=`cat $DD/.system.id`
+
+DISTROFIX=$DD/bsp/oscheck/$DISTRO.sh
+SYSFIX=$DD/bsp/oscheck/$SYSID.sh
+
+if [ -x $DISTROFIX ] ; then
+    $DISTROFIX
+fi
+
+if [ -x $SYSFIX ] ; then
+    $SYSFIX
+fi

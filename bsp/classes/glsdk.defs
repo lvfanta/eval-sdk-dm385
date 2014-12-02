@@ -1,0 +1,456 @@
+# Makefile rules to dealing with typical ezsdk logic
+#
+
+#! \defgroup glsdk_defs GLSDK Class
+#! \ingroup classes
+#! \section intro Introduction
+#! The GLSDK definitions file provides logic dealing with typical glsdk logic.
+#!
+#! \section public_params Public Parameters
+#! The following is a list of parameters that may be set according to an application's specific requirements.
+#! <ul>
+#! <li>
+#! <b>GLSDK_COPY_EXCLUSIONS_PATTERNS:</b> This are the files that should not be copied from the GLSDK to save disk space.
+#! This variable is usually defined by the GLSDK class file for the specific files on the GLSDK version.
+#!
+#! <li>
+#! <b>GLSDKURL:</b> URL from which the user can obtain a copy of the required GLSDK.
+#!
+#! <li>
+#! <b>RULES_MAKE:</b> Location of the Rules.make file within the glsdk directory for integrity checking.
+#!
+#! <li>
+#! <b>GLSDK_SEARCH_PATH:</b> List of paths in which to look for a valid GLSDK within the host machine.
+#!
+#! <li>
+#! <b>GLSDK_VERIFICATION_FILE:</b> File within the found glsdk directory to check for its integrity.
+#!
+#! </ul>
+
+export BUILDING_FROM_RR_SDK=yes
+
+include $(CLASSES)/fetcher.defs
+
+# Variables that control GLSDK interaction
+ifeq ($(GLSDK_NAME),)
+$(error ====== GLSDK_NAME variable isn't defined on RidgeRun's glsdk makefile =====)
+endif
+
+#============================================================================================
+# GLSDK component sources
+#============================================================================================
+
+# Set the GLSDK install path to the default one suggested by TI installer
+GLSDK_INSTALL_PATH=$(HOME)/$(GLSDK_NAME)
+
+# COMPONENT SOURCES DEFINITIONS
+TI_DOWNLOADS_URL=http://downloads.ti.com/dsps/dsps_public_sw/sdo_sb/targetcontent
+
+# BIOS
+BIOS_INSTALL_DIR=bios_6_35_03_47
+BIOS_URL=$(TI_DOWNLOADS_URL)/bios/sysbios/6_35_03_47/exports
+BIOS_TARBALL=bios_setuplinux_6_35_03_47.bin
+BIOS_SHA1SUM=0ec3932a6bec5da9056564991b11e2d9ca17db46
+
+# XDCTOOLS
+XDCTOOLS_INSTALL_DIR=xdctools_3_25_04_88
+XDCTOOLS_URL=$(TI_DOWNLOADS_URL)/rtsc/3_25_04_88/exports
+XDCTOOLS_TARBALL=xdctools_setuplinux_3_25_04_88.bin
+XDCTOOLS_SHA1SUM=e35ea3fa55c74a2cf6c7fe1e0a7169f713dc1871
+
+# IPC
+IPC_INSTALL_DIR=ipc_3_20_00_06
+IPC_URL=git://git.ti.com/ipc/ipcdev
+IPC_REVISION=fb45164f3336114ed8557fd9e8a08e8b7265d03a
+IPC_TARBALL=ipc_3_20_00_06.tar.bz2
+
+# CODEC ENGINE
+CODEC_ENGINE_INSTALL_DIR=codec_engine_3_24_00_08
+CODEC_ENGINE_URL=$(TI_DOWNLOADS_URL)/ce/3_24_00_08/exports/
+CODEC_ENGINE_TARBALL=codec_engine_3_24_00_08.tar.gz
+CODEC_ENGINE_SHA1SUM=cda5d143d75369e7d33d6f5fb4334e074130abaf
+
+# FRAMEWORK COMPONENTS
+FRAMEWORK_COMPONENTS_INSTALL_DIR=framework_components_3_24_02_15
+FRAMEWORK_COMPONENTS_URL=$(TI_DOWNLOADS_URL)/fc/3_24_02_15/exports/
+FRAMEWORK_COMPONENTS_TARBALL=framework_components_3_24_02_15.tar.gz
+FRAMEWORK_COMPONENTS_SHA1SUM=dc5ba06f341ccc988e2000ffd94932db1bca6d88
+
+# OSAL
+OSAL_INSTALL_DIR=osal_1_24_00_09
+OSAL_URL=$(TI_DOWNLOADS_URL)/osal/1_24_00_09/exports/
+OSAL_TARBALL=osal_1_24_00_09.tar.gz
+OSAL_SHA1SUM=5ee3a43e478861ee39b5b86287a4d5ef467d2fa5
+
+# XDAIS
+XDAIS_INSTALL_DIR=xdais_7_24_00_04
+XDAIS_URL=$(TI_DOWNLOADS_URL)/xdais/7_24_00_04/exports/
+XDAIS_TARBALL=xdais_7_24_00_04.tar.gz
+XDAIS_SHA1SUM=1b79076a172b51472b7b4c6d6a7dc38ae6ed35e0
+
+
+#============================================================================================
+# Search for an existing GLSDK tarball or create one from an existing GLSDK installation
+#============================================================================================
+
+# Tar arguments
+GLSDK_TAR_VERBOSE=$(if $(VERBOSE:1=),,--verbose)
+
+# Fetcher variables needed to be defined
+PKG_NAME=$(GLSDK_NAME)
+FETCHER_EXTRACT_DIRECTORY_NAME=glsdk
+
+# Variables that control GLSDK interaction
+GLSDKURL?=http://software-dl.ti.com/dsps/dsps_public_sw/glsdk/
+RULES_MAKE?=$(FETCHER_EXTRACT_DIRECTORY_NAME)/Rules.make
+-include $(RULES_MAKE)
+
+# Variables that control GLSDK search
+GLSDK_SEARCH_PATH?=$(HOME)/$(GLSDK_NAME) /usr/$(GLSDK_NAME) /usr/local/$(GLSDK_NAME) /usr/local/glsdk
+GLSDK_VERIFICATION_FILE?=Rules.make
+
+# This variable is usually overwriten by the glsdk class file with the respective values for the GLSDK version
+GLSDK_TARBALL_EXCLUSIONS_PATTERNS=\
+bin \
+board-support \
+docs \
+etc \
+example-applications \
+filesystem \
+patches \
+setup.sh \
+test-bench \
+uninstall \
+uninstall.dat \
+Uninstall* 
+
+TARVERBOSE=$(if $(VERBOSE:1=),,v)
+
+# GLSDK tarball name
+GLSDK_TARBALL_NAME?=$(PKG_TARBALL)
+GLSDK_TARBALL_SHA1_NAME?=$(PKG_TARBALL).sha1
+
+# Obtains info from the GLSDK tarball:
+#
+#   GLSDK_TARBALL_EXISTS
+#     - Set to 'yes' if the tarball exists. Otherwise
+#       'no'.
+#   GLSDK_TARBALL_SHA1_EXISTS
+#     - Set to 'yes' if the tarball sha1sum exists. Otherwise
+#       'no'.
+#   GLSDK_TARBALL_DIR
+#     - Set to the directory listed in DOWNLOADS,
+#       where the DVSDK tarball was found. Otherwise
+#       empty.
+#
+define glsdk_tarball_info
+  GLSDK_TARBALL_EXISTS=no ; \
+  GLSDK_TARBALL_SHA1_EXISTS=no ; \
+  GLSDK_TARBALL_DIR= ; \
+  for path in $(DOWNLOADS); do \
+    if [ -e $$path/$(GLSDK_TARBALL_NAME) ] ; then \
+      GLSDK_TARBALL_EXISTS=yes ; \
+      GLSDK_TARBALL_DIR=$$path ; \
+      if [ -e $$path/$(GLSDK_TARBALL_SHA1_NAME) ] ; then \
+        GLSDK_TARBALL_SHA1_EXISTS=yes ; \
+      fi ; \
+      break ; \
+    fi ; \
+  done
+endef
+
+# Sets GLSDK_TARBALL_TARGET_DIR to a directory listed in DOWNLOADS, where the
+# glsdk tarball will be placed. If no appropriate directory was found,
+# GLSDK_TARBALL_TARGET_DIR will be empty
+#
+define glsdk_tarball_target_dir
+  GLSDK_TARBALL_TARGET_DIR= ; \
+  for path in $(DOWNLOADS); do \
+    if [ -e $$path -a -w $$path ] ; then \
+      GLSDK_TARBALL_TARGET_DIR=$$path ; \
+      break ; \
+    fi ; \
+  done
+endef
+
+# Creates a tarball with only a subset of the GLSDK directories, according
+# to the exclude patterns specified in GLSDK_TARBALL_EXCLUSION_PATTERNS.
+#
+# The output is a gzip compressed file, which name is defined by
+# $(GLSDK_TARBALL_NAME).
+#
+# Parameters:
+#   $(1): Absolute path to where the GLSDK is located
+#   $(2): Absolute path where to put the GLSDK tarball
+#
+define glsdk_tarball_create
+  cd $(1) && \
+  tar $(GLSDK_TAR_VERBOSE) \
+      --no-same-permissions \
+      --atime-preserve \
+      --null \
+      --absolute-names \
+      --exclude-vcs \
+      --exclude=.svn \
+      --exclude=.git \
+      --exclude=\*~ \
+      $(foreach exclusion,$(GLSDK_TARBALL_EXCLUSIONS_PATTERNS),--exclude=$(GLSDK_NAME)/$(exclusion)) \
+      --create \
+      --gzip \
+      --file=$(2)/$(GLSDK_TARBALL_NAME) \
+      ../$(GLSDK_NAME)  \
+  || \
+      { \
+        $(ECHO) "$(ERROR_COLOR)Error:$(NORMAL_COLOR) while creating $(2)/$(GLSDK_TARBALL_NAME)" ; \
+        rm -f $(2)/$(GLSDK_TARBALL_NAME) ; \
+        exit -1 ; \
+      } 
+endef
+
+# Verifies that there is a valid GLSDK installed at one of the available search paths
+#
+define search_glsdk
+  GLSDK_INSTALL_PATH= ; \
+  GLSDK_FOUND_INSTALLATION_DIR=no ; \
+  for PATH2TEST in $(GLSDK_SEARCH_PATH); do \
+      if [ -e $$PATH2TEST/$(GLSDK_VERIFICATION_FILE) ] ; then  \
+         \
+         if [ ! -w $$PATH2TEST ] ; then \
+            $(ECHO) "$(ERROR_COLOR)Error:$(NORMAL_COLOR) Found a glsdk on $$PATH2TEST, but can't write into it" ; \
+            $(ECHO) "Please grant write permissions to the glsdk directory to continue.\n" ; \
+            exit -1 ; \
+         fi ; \
+         \
+         if [ -f $$PATH2TEST/rrsdk_path ] ; then \
+             $(ECHO) "$(ERROR_COLOR)Error:$(NORMAL_COLOR) Found a glsdk on $$PATH2TEST, but is currently on use by another RidgeRun SDK at path:" ; \
+             $(ECHO) "  `cat $$PATH2TEST/rrsdk_path`\n" ; \
+             exit -1 ; \
+         fi ; \
+         \
+         $(ECHO) "Found GLSDK at $$PATH2TEST" ; \
+          GLSDK_FOUND_INSTALLATION_DIR=yes ; \
+          GLSDK_INSTALL_PATH=$$PATH2TEST ; \
+     fi ; \
+  done; 
+endef
+	
+# Tars the glsdk source code
+#
+define glsdk_tar
+  GLSDK_FOUND_INSTALLATION_DIR=no ; \
+  for PATH2TEST in $(GLSDK_SEARCH_PATH); do \
+      if [ -e $$PATH2TEST/$(GLSDK_VERIFICATION_FILE) ] ; then  \
+         \
+         if [ ! -w $$PATH2TEST ] ; then \
+            $(ECHO) "$(ERROR_COLOR)Error:$(NORMAL_COLOR) Found a glsdk on $$PATH2TEST, but can't write into it" ; \
+            $(ECHO) "Please grant write permissions to the glsdk directory to continue.\n" ; \
+            exit -1 ; \
+         fi ; \
+         \
+         if [ -f $$PATH2TEST/rrsdk_path ] ; then \
+             $(ECHO) "$(ERROR_COLOR)Error:$(NORMAL_COLOR) Found a glsdk on $$PATH2TEST, but is currently on use by another RidgeRun SDK at path:" ; \
+             $(ECHO) "  `cat $$PATH2TEST/rrsdk_path`\n" ; \
+             exit -1 ; \
+         fi ; \
+         \
+         $(ECHO) "Found GLSDK at $$PATH2TEST" ; \
+          GLSDK_FOUND_INSTALLATION_DIR=yes ; \
+         \
+         $(call glsdk_tarball_target_dir) ; \
+         \
+         if [ -z $$GLSDK_TARBALL_TARGET_DIR ] ; then \
+             $(ECHO) "$(ERROR_COLOR)Error:$(NORMAL_COLOR) Unable to find a folder suitable to put the GLSDK tarball:" ; \
+             for PATH2DOWNLOADS in $(DOWNLOADS); do \
+               $(ECHO) "  * $$PATH2DOWNLOADS" ; \
+             done ; \
+             $(ECHO) "\nPlease create and grant write permissions to one of the previous paths.\n" ; \
+             exit -1 ; \
+         fi ; \
+         \
+         $(ECHO) "Creating GLSDK tarball at $$GLSDK_TARBALL_TARGET_DIR/$(GLSDK_TARBALL_NAME)" ; \
+         pushd . > /dev/null ; \
+         $(call glsdk_tarball_create,$$PATH2TEST,$$GLSDK_TARBALL_TARGET_DIR) ; \
+         popd  > /dev/null ; \
+         \
+         $(ECHO) "Generating GLSDK tarball sha1sum $$GLSDK_TARBALL_TARGET_DIR/$(GLSDK_TARBALL_SHA1_NAME)" ; \
+         sha1sum $$GLSDK_TARBALL_TARGET_DIR/$(GLSDK_TARBALL_NAME) > $$GLSDK_TARBALL_TARGET_DIR/$(GLSDK_TARBALL_SHA1_NAME) ; \
+         break ; \
+      fi ;  \
+  done ; \
+  \
+  if [ "$$GLSDK_FOUND_INSTALLATION_DIR" = "no" ] ; then \
+    $(ECHO) "$(ERROR_COLOR)Error:$(NORMAL_COLOR) GLSDK $(GLSDK_NAME) wasn't found on the following search paths:" ; \
+    for PATH2TEST in $(GLSDK_SEARCH_PATH); do \
+      $(ECHO) "* $$PATH2TEST" ; \
+    done ; \
+    $(ECHO) "\nThe GLSDK should be installed in one of the previous paths.\nYou can download the GLSDK from the following URL:" ; \
+    $(ECHO) " $(GREEN)$(GLSDKURL)$(NORMAL_COLOR)\n" ; \
+    exit -1 ; \
+  fi 
+endef
+
+
+# Logic to obtain the component sources packages (part of the GLSDK)
+bios:
+	$(V)$(ECHO) Fetching specific version of the bios used by glsdk
+	$(V)PKG_URL=$(BIOS_URL) \
+		PKG_TARBALL=$(BIOS_TARBALL) \
+		PKG_SHA1SUM=$(BIOS_SHA1SUM) \
+		BIN_ARGUMENTS="--prefix $(GLSDK_INSTALL_PATH)/component-sources --mode unattended" \
+		$(DEVDIR)/bsp/scripts/fetcher.sh $(DEBUG)
+	$(V)rm rrfetched	
+
+xdctools:
+	$(V)$(ECHO) Fetching specific version of the xdctools used by glsdk
+	$(V)PKG_URL=$(XDCTOOLS_URL) \
+		PKG_TARBALL=$(XDCTOOLS_TARBALL) \
+		PKG_SHA1SUM=$(XDCTOOLS_SHA1SUM) \
+		BIN_ARGUMENTS="--prefix $(GLSDK_INSTALL_PATH)/component-sources --mode unattended" \
+		$(DEVDIR)/bsp/scripts/fetcher.sh $(DEBUG)
+	$(V)rm rrfetched		
+
+ipc:
+	$(V)$(ECHO) Fetching specific version of the ipc used by glsdk
+	$(V)PKG_URL=$(IPC_URL) \
+		PKG_TYPE="git" \
+		PKG_REVISION=$(IPC_REVISION) \
+		PKG_TARBALL=$(IPC_TARBALL) \
+		FETCHER_EXTRACT_DIRECTORY_NAME=$(GLSDK_INSTALL_PATH)/component-sources/$(IPC_INSTALL_DIR) \
+		$(DEVDIR)/bsp/scripts/fetcher.sh $(DEBUG)
+	$(V)rm rrfetched		
+
+codec_engine:
+	$(V)$(ECHO) Fetching specific version of the codec engine used by glsdk
+	$(V)PKG_URL=$(CODEC_ENGINE_URL) \
+		PKG_TARBALL=$(CODEC_ENGINE_TARBALL) \
+		PKG_SHA1SUM=$(CODEC_ENGINE_SHA1SUM) \
+		FETCHER_EXTRACT_DIRECTORY_NAME=$(GLSDK_INSTALL_PATH)/component-sources/$(CODEC_ENGINE_INSTALL_DIR) \
+		$(DEVDIR)/bsp/scripts/fetcher.sh $(DEBUG)
+	$(V)rm rrfetched		
+	
+framework_components:
+	$(V)$(ECHO) Fetching specific version of the framework components used by glsdk
+	$(V)PKG_URL=$(FRAMEWORK_COMPONENTS_URL) \
+		PKG_TARBALL=$(FRAMEWORK_COMPONENTS_TARBALL) \
+		PKG_SHA1SUM=$(FRAMEWORK_COMPONENTS_SHA1SUM) \
+		FETCHER_EXTRACT_DIRECTORY_NAME=$(GLSDK_INSTALL_PATH)/component-sources/$(FRAMEWORK_COMPONENTS_INSTALL_DIR) \
+		$(DEVDIR)/bsp/scripts/fetcher.sh $(DEBUG)
+	$(V)rm rrfetched
+	
+osal:
+	$(V)$(ECHO) Fetching specific version of the osal used by glsdk
+	$(V)PKG_URL=$(OSAL_URL) \
+		PKG_TARBALL=$(OSAL_TARBALL) \
+		PKG_SHA1SUM=$(OSAL_SHA1SUM) \
+		FETCHER_EXTRACT_DIRECTORY_NAME=$(GLSDK_INSTALL_PATH)/component-sources/$(OSAL_INSTALL_DIR) \
+		$(DEVDIR)/bsp/scripts/fetcher.sh $(DEBUG)
+	$(V)rm rrfetched		
+	
+xdais:
+	$(V)$(ECHO) Fetching specific version of the xdais used by glsdk
+	$(V)PKG_URL=$(XDAIS_URL) \
+		PKG_TARBALL=$(XDAIS_TARBALL) \
+		PKG_SHA1SUM=$(XDAIS_SHA1SUM) \
+		FETCHER_EXTRACT_DIRECTORY_NAME=$(GLSDK_INSTALL_PATH)/component-sources/$(XDAIS_INSTALL_DIR) \
+		$(DEVDIR)/bsp/scripts/fetcher.sh $(DEBUG)
+	$(V)rm rrfetched		
+	
+component_sources: bios xdctools ipc codec_engine framework_components osal xdais		
+
+# Logic to obtain the glsdk source code
+#
+glsdk: glsdk_fetch
+
+glsdk_fetch:
+	$(V) $(call glsdk_tarball_info) ; \
+	if [ "$$GLSDK_TARBALL_EXISTS" = "yes" ] ; then \
+	  if [ "$$GLSDK_TARBALL_SHA1_EXISTS" = "no" ] ; then \
+	    $(ECHO) "$(ERROR_COLOR)Error:$(NORMAL_COLOR) missing required sha1sum file: $$GLSDK_TARBALL_DIR/$(GLSDK_TARBALL_SHA1_NAME)" ; \
+	    exit -1 ; \
+	  fi ; \
+	elif [ -z "$(PKG_URL)" ] && [ -z "$(PKG_INTERNAL_URL)"] ; then \
+	    $(call glsdk_tar) ; \
+	fi ; \
+	\
+	$(MAKE) rrfetched
+
+rrconfig: custom_rules_make rrpatched
+
+custom_rules_make:
+	$(V) if ! [ -L $(RULES_MAKE) ] ; then \
+	    chmod -R +w glsdk ; \
+	    mv $(RULES_MAKE) $(RULES_MAKE).orig ; \
+	    ln -s $(shell pwd)/patches/arch/Rules.make.custom $(RULES_MAKE) ; \
+	fi
+
+glsdk_clean: remove_custom_rules_make unpatch
+
+remove_custom_rules_make:
+	$(V) if [ -L $(RULES_MAKE) ] ; then \
+	    mv $(RULES_MAKE).orig $(RULES_MAKE) ; \
+	fi
+
+glsdk_distclean: rrfetched_clean
+	@#We should not clean if we are going to erase the files anyway, unlike when we are sharing the dir
+	$(V) if [ -L $(FETCHER_EXTRACT_DIRECTORY_NAME) ] ; then \
+	    $(MAKE) glsdk_clean ; \
+	fi
+
+glsdk_cmdline:
+ifneq ($(CONFIG_PROPRIETARY_GLSDK_RESERVED_MEMORY),)
+	$(V) # We need to reserve $(CONFIG_PROPRIETARY_GLSDK_CMEM_RESERVED_MEMORY) for cmemk.ko
+	$(V) declare -i MSIZE="($(CONFIG_BSP_ARCH_SDRAM_SIZE)-$(CONFIG_PROPRIETARY_GLSDK_MEM_VALUE))/0x100000" ; \
+	if ! grep -q "mem=" $(CMDLINEFILE) ; then \
+	    echo -n " mem=$${MSIZE}M " >>$(CMDLINEFILE) ; \
+	else \
+	    sed -i -e "s/mem=.*M/mem=$${MSIZE}M/" $(CMDLINEFILE) ; \
+	fi
+endif
+ifneq ($(GLSDK_EXTRA_CMDLINE_ARGS),)
+	$(V) if ! grep -q $(GLSDK_EXTRA_CMDLINE_ARGS) $(CMDLINEFILE) ; then \
+	        echo -n " $(GLSDK_EXTRA_CMDLINE_ARGS) " >> $(CMDLINEFILE) ; \
+	     fi
+endif
+
+glsdk_create_tar: component_sources
+	$(V) $(call glsdk_tar)
+
+#============================================================================================
+# ipumm targets. Compile - install and uninstall the ipumm firmware
+#============================================================================================
+
+.PHONY: ipumm_v6 ipumm_v6_install
+ipumm_v6: ipumm_built
+ipumm_v6_install: ipumm_install
+ipumm_v6_uninstall: ipumm_uninstall
+ipumm_v6_clean: ipumm_clean
+
+.PHONY: ipumm_install
+
+ipumm_built:
+	sed -i -e "s#^TOOLCHAIN_LONGNAME.*#TOOLCHAIN_LONGNAME = $(CROSS_COMPILE_PREFIX)#" ${IPC_INSTALL_DIR}/products.mak
+	sed -i -e "s#^KERNEL_INSTALL_DIR.*#KERNEL_INSTALL_DIR = $(LINUXKERNEL_INSTALL_DIR)#" $(IPC_INSTALL_DIR)/products.mak
+	sed -i -e "s#^TOOLCHAIN_INSTALL_DIR.*#TOOLCHAIN_INSTALL_DIR = ${TOOLCHAIN_INSTALL_DIR}#" ${IPC_INSTALL_DIR}/products.mak
+	sed -i -e "s#^PLATFORM.*#PLATFORM = ${PLATFORM_IPC}#" ${IPC_INSTALL_DIR}/products.mak
+	sed -i -e "s#^PREFIX ?=.*#PREFIX = /usr#" ${IPC_INSTALL_DIR}/products.mak
+	sed -i -e "s#^ti.targets.arm.elf.M4 .*#ti.targets.arm.elf.M4 = ${TMS470CGTOOLPATH_INSTALL_DIR}#" ${IPC_INSTALL_DIR}/products.mak
+	$(MAKE) -C $(IPC_INSTALL_DIR) $(IPC_BUILD_VARS) -f ipc-bios.mak all
+	$(MAKE) -C $(IPUMM_INSTALL_DIR) $(IPUMM_BUILD_VARS) $(DEFAULT_IPUMM_CONFIG)
+	$(MAKE) -C $(IPUMM_INSTALL_DIR) $(IPUMM_BUILD_VARS)
+
+ipumm_clean:
+	$(MAKE) -C $(IPUMM_INSTALL_DIR) $(IPUMM_BUILD_VARS) clean
+	$(MAKE) -C $(IPC_INSTALL_DIR) $(IPC_BUILD_VARS) -f ipc-bios.mak clean
+
+ipumm_install:
+	install -d $(EXEC_DIR)/lib/firmware
+	install  $(IPUMM_INSTALL_DIR)/$(DUCATI_FW_GEN) $(EXEC_DIR)/lib/firmware/$(DUCATI_FW)
+
+ipumm_uninstall:
+
+	
+	
+
+
+	
+

@@ -1,0 +1,5 @@
+config FS_APPS_FLUP
+        bool "flup 1.0.2 (Python)"
+	select FS_APPS_PYTHON
+        help
+	Flup offers three sets of WSGI servers/gateways, which speak AJP 1.3, FastCGI, and SCGI. Each server comes in two flavors: a threaded version, and a forking version.

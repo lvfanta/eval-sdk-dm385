@@ -1,0 +1,11 @@
+include $(CLASSES)/rtsc.defs
+
+.PHONY: patch build clean install
+
+build:: rtsc_flags
+
+patch: rrpatched
+
+clean:: rtsc_clean
+
+install:: rtsc_install

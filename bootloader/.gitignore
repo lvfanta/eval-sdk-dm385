@@ -1,0 +1,6 @@
+# RidgeRun SDK uboot drived items
+.fsloadhex
+relflags
+arch_build
+gen_ipl
+gen_uboot_flashbin

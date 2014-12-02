@@ -1,0 +1,12 @@
+#!/bin/sh
+
+if [ -z $1 ]; then
+  echo "Usage: $0 <application>"
+  exit 0;
+fi
+
+# this is annoying, this should be recursively replaced
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+LD_PRELOAD=$LD_PRELOAD:@libdir@/gst-tracelib/libgsttracelib.so "$@"
+

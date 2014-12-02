@@ -1,0 +1,6 @@
+config USER_APPS_READ_WRITE_PARTITION
+	bool "Read/Write partition data"
+	default n
+	help
+	    Files that are located at read/write partition, useful when using read only file system.
+	    More information at: [ TO DO: URL to developers wiki]

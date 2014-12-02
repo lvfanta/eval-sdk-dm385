@@ -1,0 +1,17 @@
+.PHONY: build fetch preconfig uninstall distclean clean buildfs cmdline
+ 
+build: yocto_build yocto_install
+
+preconfig: yocto_preconfig
+
+clean: yocto_clean
+
+fetch: yocto_files_refresh yocto_packages yocto_toolchain yocto_prefetch yocto_fetch
+
+distclean: yocto_distclean
+
+buildfs: yocto_build
+
+cmdline:
+
+include $(CLASSES)/yocto.defs

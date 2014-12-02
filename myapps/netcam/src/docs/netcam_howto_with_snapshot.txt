@@ -1,0 +1,78 @@
+The following builds on the simple video netcam howto showing
+one way to add taking high resolution pictures while the
+camera is streaming video.
+
+The basic idea is to tee the video stream to both stream
+video and take pictures.  You can do this with the GStreamer
+tee and valve elements.  This example uses a different 
+approach - breaking the problem into three pipelines and
+connecting them using the interpipe elements.
+
+Taking a picture
+
+Since we already have a working pipeline for RTSP streaming
+video, we only need to get a pipeline working for taking a 
+picture.
+
+ gst-launch v4l2src num-buffers=1 ! jpegenc ! multifilesink next-file=0 location="netcam-%05d.jpg"
+
+After running the pipeline, you should find netcam-00000.jpg file containing a 
+high resolution snapshot.
+
+Interpipe connected pipelines
+
+Using interpipe, we will have three pipelines
+
+# source pipeline
+# video streaming pipeline
+# snapshot pipeline
+
+The interpipesink element passes GStreamer buffers (video frames in this case)
+to all interpipesrc elements.  To be more flexible, interpipe allows the sink
+element to be identified so you can switch which source element is providing the
+buffers - but we won't use that feature in this example.  For those new to
+GStreamer, a src element puts GStreamer buffers into the beginning of a pipeline
+and a sink element consumes GStreamer buffers at the end of the pipeline.  All
+pipelines start with a src element and end with a sink element.
+
+cat <<EOF
+[simple_video_camera]
+video_camera = v4l2src ! x264enc ! rtspsink mapping=/netcam
+[snapshot_video_camera]
+video_capture = v4l2src ! interpipesink
+video_streaming = interpipesrc ! x264enc ! rtspsink mapping=/netcam
+snapshot = interpipesrc num-buffers=0 ! jpegenc ! multifilesink next-file=0 location="netcam-%05d.jpg"
+EOF > pipelines.gst
+
+Controller snapshot support
+
+If we simply start all three pipelines, we will be taking pictures once per frame,
+which may be 30 fps or 60 fps depending on your camera!  Instead we want to 
+start, or in GStreamer terminology put the pipeline in the PLAY state, the video_capture
+and video_streaming pipelines, but not the snapshot pipeline.
+
+We can work around this by
+setting the snapshot pipeline source element to pass zero buffers (num-buffers=0). When
+we want to take a picture, we simply set num-buffers parameter on the interpipesrc element
+in the snapshot pipeline to a value of 1.  Using the python netcam Streamer framework, it is
+done using:
+
+ pipeline_element_set_param("snapshot", "interpipesrc", "num-buffers', 1)
+
+Next we create a simple netcam Controller method:
+
+ def snapshot(parms):
+     result = pipeline_element_set_param("snapshot", "interpipesrc", "num-buffers', 1);
+     return { 'result' = result }
+
+Finally we expose the netcam Controller API via JSON HTTP command.  We do this in 
+netcam app.py using
+
+@app.route('/snapshot')
+def snapshot():
+    """Takes a high resolution snapshot and saves the image to a JPEG file."
+    return json.dumps(cntlr.snapshot(None)
+
+Now from any browser you can surf to http:10.251.101.221/snapshot
+
+and your netcam will take a high resolution picture.

@@ -1,0 +1,58 @@
+The following is a step-by-step description showing how to turn your
+laptop computer, or desktop computer with a USB camera, into a
+netcam.  For this example the computer is running a Ubuntu
+distribution.
+
+Install needed packages
+
+Make sure your computer has python and GStreamer installed:
+
+ sudo apt-get install
+
+
+Verify camera is available
+
+On Linux systems, cameras are exposed using V4L2.  List all cameras
+that are available
+
+ ls /sys/class/video4linux
+
+with example output being
+
+ video0
+
+which means the camera is exposed via the device file /dev/video0.
+
+Live video pipeline
+
+We use the GStreamer gst-launch tool to verify our pipelines are
+working correctly.  Then we simply paste the pipelines into the netcam
+pipelines.gst file.
+
+ gst-launch v4l2src ! xvimagesink
+
+That is all well and good, but we don't want live preview to the local
+computer; we need to expose the camera's video stream over a network
+protocol such as RTP/RTSP.
+
+ sudo gst-launch v4l2src ! x264enc ! rtspsink mapping=/netcam
+
+Now you can can use a media player from another computer on the
+network to view the live stream
+
+ vlc rtsp://10.251.101.221/netcam
+
+where my computer has the IP address 10.251.101.221
+
+We can now paste the working pipeline in the netcam pipelines.gst file
+
+cat <<EOF
+[simple_video_camera]
+video_camera = v4l2src ! x264enc ! rtspsink mapping=/netcam
+EOF
+
+and we can start netcam using the python Flask web server
+
+ sudo python app.py group=simple_video_camera pipe=video_camera
+
+That's it.  Should should now be able to browse to netcam and see the live video stream.

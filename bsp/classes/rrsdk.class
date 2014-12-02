@@ -1,0 +1,10 @@
+ifeq ($(DEVDIR),)
+$(error ====== DEVDIR variable is empty, invoke this Makefile from the BSP root, or provide the path to it =====)
+endif
+include $(DEVDIR)/bsp/mach/Make.conf
+
+ifneq ($(MAKECMDGOALS),sim)
+export CROSS_COMPILE=$(CCACHE) $(TOOLCHAIN_PREFIX)-
+endif
+include $(CLASSES)/_rrsdk.defs
+include $(CLASSES)/ccache.defs

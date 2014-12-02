@@ -1,0 +1,65 @@
+#$L$
+# Copyright (C) 2014 Ridgerun (http://www.ridgerun.com). 
+#$L$
+
+# Bootcmd
+
+BOOTCMD="nboot $(CONFIG_INSTALLER_LOAD_ADDRS) 0 \\\$${kernel_offset}"
+
+# Mtdparts
+
+ifeq ($(CONFIG_INSTALLER_MTD_UBOOT_INTEGRATION),y)
+ifeq ($(CONFIG_INSTALLER_MTD_DEVICE_NAME),)
+$(error Unable to identify an MTD device, please define CONFIG_INSTALLER_MTD_DEVICE_NAME)
+endif
+MTDPARTS="$(shell cat $(NAND_MMAP_FILE) | grep mtdparts | cut -f 3 -d ' ')"
+endif
+
+installbootloader: installbootloadercheck installmemorymap
+	$(V) $(INSTALLER_EXE) $(INSTALLER_ARGS) nand $(NAND_ARGS) --uboot-file $(BOOTLOADERIMAGE) ipl --force
+	$(V) $(INSTALLER_EXE) $(INSTALLER_ARGS) nand $(NAND_ARGS) bootloader
+
+installkernel: installmemorymap
+	$(V) $(INSTALLER_EXE) $(INSTALLER_ARGS) nand $(NAND_ARGS) kernel $(INSTALLER_FORCE)
+
+installfs:: installmemorymap $(IMAGEDIR)/fsimage
+ifeq ($(CONFIG_FS_TARGET_NFSROOT),y)
+	$(V) echo "NFS filesystem doesn't need to be loaded"
+else ifeq ($(CONFIG_FS_TARGET_SD),y)
+	$(V) # Do nothing - SD mode does the job
+else
+	$(V) $(INSTALLER_EXE) $(INSTALLER_ARGS) nand $(NAND_ARGS) fs $(INSTALLER_FORCE)
+endif
+
+installcmdline: installmemorymap
+	$(V) CMDLINE="$(shell cat $(CMDLINEFILE))" ; \
+	     if [ -z "$$CMDLINE" ] ; then \
+	       $(ECHO) "$(ERROR_COLOR)Error:$(NORMAL_COLOR) while obtaining the cmdline from $(CMDLINEFILE)" ; \
+	       exit -1 ; \
+	     fi ; \
+	     $(INSTALLER_EXE) $(INSTALLER_ARGS) env $(ENV_ARGS) --variable bootargs --value "$$CMDLINE" $(INSTALLER_FORCE)	
+
+installbootcmd: installmemorymap
+	$(V) $(INSTALLER_EXE) $(INSTALLER_ARGS) env $(ENV_ARGS) --variable bootcmd --value $(BOOTCMD) $(INSTALLER_FORCE)
+
+installmtdparts: installmemorymap
+ifneq ($(CONFIG_INSTALLER_MTD_UBOOT_INTEGRATION),y)
+	$(V) echo "No MTD U-Boot integration (CONFIG_INSTALLER_MTD_UBOOT_INTEGRATION)"
+else
+	$(V) $(INSTALLER_EXE) $(INSTALLER_ARGS) env $(ENV_ARGS) --variable mtdparts --value $(MTDPARTS) $(INSTALLER_FORCE)
+endif
+
+installkernelram:
+	$(V) $(INSTALLER_EXE) $(INSTALLER_ARGS) ram $(RAM_ARGS) \
+	  --file $(IMAGEDIR)/kernel.uImage \
+	  --load-addr $(CONFIG_INSTALLER_LOAD_ADDRS) \
+	  --boot-line "Please press Enter to activate this console" \
+	  --boot-timeout 40
+
+install: installkernel installfs installcmdline installbootcmd installmtdparts
+
+installrecovery: installbootloader install
+
+help_targets::
+	@echo "   installkernelram - Install kernel to RAM memory and boot"
+	@echo "   installrecovery  - Attempts to install all components to NAND"

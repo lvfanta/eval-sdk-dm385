@@ -1,0 +1,82 @@
+= GStreamer tracing library =
+This library hooks into some gstreamer key functions and logs the behaviour.
+When the application exits it displays some general statistics. Further analysis
+can be done based on the data written to the logfile
+
+The idea is not avoid adding API for performance meassurement to gstreamer.
+http://bugzilla.gnome.org/show_bug.cgi?id=353680
+
+== Services ==
+library provides some common services used by the sensor modules.
+* logging
+* timestamps
+
+== Sensors ==
+Sensors do meassurements and deliver timestampe performance data.
+* bitrates and latency via gst_pad_push/pull_range per link
+* qos ratio via gst_event_new_qos(), gst_pad_send_event()
+* cpu/mem via get_rusage
+  * when (gst_clock_get_time) ?
+  * we want it per thread
+* queue fill levels
+* tasks
+
+== Wanted Sensors ==
+* dropped buffers
+
+== Log Format ==
+* we log into one file for performance reasons and split later
+
+== Running ==
+The tracelib can be used uninstalled like this:
+LD_PRELOAD=src/.libs/libgsttracelib.so gst-launch-0.10 fakesrc num-buffers=10 ! fakesink
+LD_PRELOAD=src/.libs/libgsttracelib.so gst-launch-0.10 videotestsrc num-buffers=50 ! xvimagesink
+LD_PRELOAD=src/.libs/libgsttracelib.so gst-launch-0.10 filesrc location=$HOME/audio/bladerun.mod ! decodebin ! alsasink
+LD_PRELOAD=src/.libs/libgsttracelib.so GSTTL_NO_LOG=1 gst-launch-0.10 filesrc location=$HOME/audio/klingon.mp3 ! decodebin2 ! fakesink sync=true
+LD_PRELOAD=src/.libs/libgsttracelib.so GSTTL_NO_LOG=1 gst-launch-0.10 filesrc location=$HOME/video/XMen3Trailer.avi ! decodebin2 name=decodebin ! xvimagesink decodebin. ! audioconvert ! alsasink
+LD_PRELOAD=src/.libs/libgsttracelib.so GSTTL_NO_LOG=1 gst-launch-0.10 filesrc location=$HOME/video/XMen3Trailer.avi ! decodebin2 name=decodebin ! fakesink sync=true name=vsink decodebin. ! fakesink sync=true name=asink
+LD_PRELOAD=src/.libs/libgsttracelib.so GSTTL_NO_LOG=1 gst-launch-0.10 playbin uri=file://$HOME/video/cairo-dock-2.ogg
+LD_PRELOAD=src/.libs/libgsttracelib.so gst-seek 16 uri=file://$HOME/video/cairo-dock-2.ogg
+LD_PRELOAD=src/.libs/libgsttracelib.so gst-launch-0.10 --gst-disable-registry-update playbin2 uri=file:///home/ensonic/video/TheChubbChubbs.divx311.avi flags=99
+
+LD_PRELOAD=src/.libs/libgsttracelib.so gst-launch-0.10 --gst-disable-registry-update audiotestsrc num-buffers=50 ! audio/x-raw-int,channels=1,hello=5 ! pulsesink
+
+If it is installed, one can use the 'gsttl' wrapper script to ldpreload the lib.
+
+There are some additional env vars to influence the behaviour:
+GSTTL_LOG_NAME - full path to log file
+  "/tmp/gsttl.log" if empty
+GSTTL_NO_LOG - do not log if set to anything
+GSTTL_LOG_SIZE - size of preallocated logbuffer
+  if not given or 0 gsttracelib uses linebuffered file logging,
+  if a size is given a memory buffer of that many bytes is preallocated and all
+  events are logged to the memory, the buffer is written at the end of the run
+  if the memory buffer was too small, only a partial log is written and a message
+  at the end tells how much would have been needed
+GSTTL_DETAILS - specify log details, multiple entries separated with ';' (not yet done)
+  "*" if empty
+  "qos"
+  "rusage,cpu-load=all/sum"
+  "pads"
+  "msg,toplevel-only=yey/no"
+
+== Exploration ==
+=== Plot graphs using gnuplot >=4.3 ===
+; preprocess the data
+rm -r /tmp/gsttl
+./src/gsttl_splitlog.py
+; plot as png
+./src/gsttl_plot.sh --format=png | gnuplot
+eog /tmp/gsttl.png
+; plot as svg (default)
+./src/gsttl_plot.sh | gnuplot
+evince /tmp/gsttl.svg
+rsvg-view /tmp/gsttl.svg
+
+=== In the future ===
+pygtk ui using mathplotlib
+gst-debug-viewer
+
+== Ideas ==
+* could be used in gst-qa-system (aka insanity) suite as a monitor
+

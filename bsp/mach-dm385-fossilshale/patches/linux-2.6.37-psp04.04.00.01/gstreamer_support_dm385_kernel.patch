@@ -1,0 +1,490 @@
+Index: kernel/linux-2.6.37-psp04.04.00.01/drivers/video/ti81xx/vpss/capt.c
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/drivers/video/ti81xx/vpss/capt.c	2014-11-24 09:24:52.637667998 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/drivers/video/ti81xx/vpss/capt.c	2014-11-25 18:02:13.421075879 -0600
+@@ -342,7 +342,7 @@
+ {
+ 	int r = 0;
+ 
+-	VPSSDBG("delete capture%d\n", cctrl->capt_num);
++	printk("## CAPT: delete capture%d\n", cctrl->capt_num);
+ 
+ 	if ((cctrl == NULL) || (cctrl->handle == NULL))
+ 		return -EINVAL;
+@@ -350,6 +350,7 @@
+ 	r = vps_fvid2_delete(cctrl->handle, NULL);
+ 	if (!r)
+ 		cctrl->handle = NULL;
++	printk("## CAPT: capture_delete is returning %d\n", r);
+ 	return r;
+ 
+ }
+@@ -674,13 +675,13 @@
+ {
+ 	int r = 0;
+ 
+-	printk("## CAPT: going to fail here due to bad input format\n");
++	printk("## CAPT: check format, currently is %d\n",fmt->dataformat);
+ 	VPSSDBG("check format\n");
+ 	if (FVID2_DF_YUV422I_YUYV != fmt->dataformat &&
+ 		FVID2_DF_YUV420SP_UV != fmt->dataformat &&
+ 		FVID2_DF_YUV422SP_UV != fmt->dataformat &&
+ 		FVID2_DF_RGB24_888 != fmt->dataformat) {
+-		VPSSERR("Buffer format (%d) not supported!!\n",
++		printk("Buffer format (%d) not supported!!\n",
+ 		    fmt->dataformat);
+ 		r = -EINVAL;
+ 	}
+@@ -689,7 +690,7 @@
+ 
+ 	/* Check whether window width/startX is even */
+ 	if (fmt->width & 0x01u)	{
+-		VPSSERR("width(%d) can't be odd!!\n", fmt->width);
++		printk("width(%d) can't be odd!!\n", fmt->width);
+ 		r = -EINVAL;
+ 	}
+ 
+@@ -698,7 +699,7 @@
+ 			/* Check whether window height is multiple of 4
+ 			* for YUV420 format in interlaced display mode */
+ 			if (fmt->height & 0x03u) {
+-				VPSSERR("height(%d)should be multiple"
++				printk("height(%d)should be multiple"
+ 					"of 4 for YUV420 "
+ 					"format in display mode!!\n",
+ 					fmt->height);
+@@ -708,13 +709,13 @@
+ 			/* Check whether window height/startY is
+ 			even for YUV420 format */
+ 			if (fmt->height & 0x01u) {
+-				VPSSERR("height(%d) can't be odd for "
++				printk("height(%d) can't be odd for "
+ 					"YUV420 format!!\n",
+ 					fmt->height);
+ 				r = -EINVAL;
+ 		    }
+ 		}
+-	}
++	} printk("## CATP: return value is %d\n", r);
+ 	return r;
+ 
+ }
+Index: kernel/linux-2.6.37-psp04.04.00.01/drivers/media/video/ti81xx/ti81xxvin_main.c
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/drivers/media/video/ti81xx/ti81xxvin_main.c	2014-11-21 17:37:19.151573722 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/drivers/media/video/ti81xx/ti81xxvin_main.c	2014-11-26 16:48:19.836172427 -0600
+@@ -388,6 +388,7 @@
+ 	if (V4L2_DV_INVALID != inst->video.cur_dv_preset.preset) {
+ 		printk("## VIN: dv_preset was not invalid\n");
+ 		switch (inst->video.cur_dv_preset.preset) {
++		case V4L2_DV_1080P30:
+ 		case V4L2_DV_1080I30:
+ 		case V4L2_DV_1080I25:
+ 		case V4L2_DV_1080I50:
+@@ -395,7 +396,7 @@
+ 			buf_obj->fmt.fmt.pix.field = V4L2_FIELD_INTERLACED;
+ 			break;
+ 		default:
+-			printk("## VIN: dv_preset was V4L2_STD_NTSC\n");
++			printk("## VIN: dv_preset was %d\n",inst->video.cur_dv_preset.preset);
+ 			buf_obj->fmt.fmt.pix.field = V4L2_FIELD_NONE;
+ 		}
+ 	} else if (V4L2_STD_UNKNOWN != inst->video.cur_std_id)
+@@ -407,7 +408,7 @@
+ 	buf_obj->memory = V4L2_MEMORY_USERPTR;
+ 
+ 	buf_obj->fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
+-	printk("## VIN: testing V4L2_PIX_FMT_UYVY format\n"); 			//========= format ============
++	printk("## VIN: setting V4L2_PIX_FMT_YUYV format\n"); 			//========= format ============
+ 	//buf_obj->fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_UYVY;
+ 	buf_obj->fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+ 	buf_obj->fmt.fmt.pix.sizeimage = buf_obj->fmt.fmt.pix.height *
+@@ -950,6 +951,8 @@
+ {
+ 	int ret = 0;
+ 	ret = (inst->captctrl->delete(inst->captctrl));
++	printk("## VIN: ti81xxvin_vps_delete return is %d\n", ret);
++	msleep(2000);
+ 	BUG_ON(ret);
+ }
+ 
+@@ -964,6 +967,7 @@
+ {
+ 	int ret = 0;
+ 	ret = (inst->captctrl->stop(inst->captctrl));
++	printk("## VIN: captctrl->stop return is %d\n",ret);
+ 	return ret;
+ }
+ /* This function is protected under mutex */
+@@ -982,19 +986,23 @@
+ 		buf->state = VIDEOBUF_DONE;
+ 	}
+ 
++	printk("## VIN: ISRs unregistered\n");
+ 	/* Stop the FVID2_driver */
+ 	ti81xxvin_vps_stop(inst);
+ 
++	printk("## VIN: videobuff_streamoff\n");
+ 	ret = videobuf_streamoff(&buf_obj->buffer_queue);
+ 	if (ret)
+ 		ti81xxvin_dbg(1, debug, "videobuf streamoff failed\n");
+ 
+ 	ti81xxvin_vps_delete(inst);
+-	ret = v4l2_subdev_call(ti81xxvin_obj.sd[inst->curr_sd_index], video,
+-			s_stream, 0);
++	//ret = v4l2_subdev_call(ti81xxvin_obj.sd[inst->curr_sd_index], video,
++	//		s_stream, 0);
+ 
+ 	if (ret && (ret != -ENOIOCTLCMD))
+ 		ti81xxvin_dbg(1, debug, "stream off failed in subdev\n");
++
++	printk("## VIN: hdvpss_stop return is %d\n",ret);
+ 	return ret;
+ }
+ 
+@@ -1045,6 +1053,7 @@
+ {
+ 	struct ti81xxvin_config *config = ti81xxvin_dev->platform_data;
+ 
++	printk("## VIN: --- Inside vidioc_querycap\n");
+ 	cap->version = TI81XXVIN_VERSION_CODE;
+ 	cap->capabilities = V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_STREAMING |
+ 		V4L2_BUF_TYPE_VIDEO_OVERLAY;
+@@ -1064,6 +1073,7 @@
+ static int vidioc_g_priority(struct file *file, void *priv,
+ 		enum v4l2_priority *prio)
+ {
++	printk("## VIN: --- Inside vidioc_g_priority\n");
+ 	struct ti81xxvin_fh *fh = priv;
+ 	struct ti81xxvin_instance_obj *ints = fh->instance;
+ 
+@@ -1081,6 +1091,7 @@
+ static int vidioc_s_priority(struct file *file, void *priv,
+ 	enum v4l2_priority p)
+ {
++	printk("## VIN: --- Inside vidioc_s_priority\n");
+ 	struct ti81xxvin_fh *fh = priv;
+ 	struct ti81xxvin_instance_obj *ints = fh->instance;
+ 
+@@ -1096,6 +1107,7 @@
+ static int vidioc_enum_fmt_vid_cap(struct file *file, void  *priv,
+ 		struct v4l2_fmtdesc *fmt)
+ {
++	printk("## VIN: --- Inside vidioc_enum_fmt_vid_cap\n");
+ 	switch (fmt->index) {
+ 	case (0):
+ 		strcpy(fmt->description, "YCbCr4:2:2 YC Interleaved");
+@@ -1181,6 +1193,7 @@
+ static int vidioc_try_fmt_vid_cap(struct file *file, void *priv,
+ 		struct v4l2_format *fmt)
+ {
++	printk("## VIN: --- Inside vidioc_try_fmt_vid_cap\n");
+ 	struct ti81xxvin_fh *fh = priv;
+ 	struct ti81xxvin_instance_obj *inst = fh->instance;
+ 	struct v4l2_pix_format *pixfmt = &fmt->fmt.pix;
+@@ -1224,7 +1237,7 @@
+ static int vidioc_enum_input(struct file *file, void *priv,
+ 		struct v4l2_input *input)
+ {
+-
++	printk("## VIN: --- Inside vidioc_enum_input\n");
+ 	struct ti81xxvin_config *config = ti81xxvin_dev->platform_data;
+ 	struct ti81xxvin_inst_config *inst_cfg;
+ 	struct ti81xxvin_fh *fh = priv;
+@@ -1250,6 +1263,7 @@
+  */
+ static int vidioc_g_input(struct file *file, void *priv, unsigned int *index)
+ {
++	printk("## VIN: --- Inside vidioc_g_input\n");
+ 	struct ti81xxvin_fh *fh = priv;
+ 	struct ti81xxvin_instance_obj *inst = fh->instance;
+ 	struct ti81xxvin_vid_obj *vid_ch = &inst->video;
+@@ -1276,6 +1290,7 @@
+ 	struct ti81xxvin_subdev_info *subdev_info;
+ 	int ret = 0, sd_index = 0;
+ 
++	printk("## VIN: --- Inside vidioc_s_input\n");
+ 	inst_cfg = &config->inst_config[inst->instance_id];
+ 
+ 	if (buf_obj->started) {
+@@ -1379,7 +1394,11 @@
+ //	mbus_framefmt.colorspace = V4L2_COLORSPACE_SMPTE170M;
+ //         mbus_framefmt.field = V4L2_COLORSPACE_SMPTE170M;
+  
+-         qpreset->preset = V4L2_DV_480P59_94;
++	if (inst->captctrl->capt_num != 4) qpreset->preset = V4L2_DV_480P59_94;
++    else {
++		 printk("## VIN: setting dv preset to V4L2_DV_1080P30 ## (should be V4L2_DV_1080I30)\n");
++         qpreset->preset = V4L2_DV_1080P30;
++    }
+ //         inst->video.cur_dv_preset.preset = V4L2_DV_INVALID;
+          inst->video.cur_dv_preset.preset = V4L2_DV_480P59_94;
+ //         inst->video.cur_std_id = V4L2_STD_ALL;
+@@ -1447,6 +1466,7 @@
+ 	struct v4l2_mbus_framefmt mbus_framefmt;
+ 
+ 	ti81xxvin_dbg(2, debug, "vidioc_query_dv_preset\n");
++	printk("## VIN: --- Inside vidioc_querystd\n");
+ 
+ 	if (mutex_lock_interruptible(&buf_obj->buf_lock))
+ 		return -ERESTARTSYS;
+@@ -1497,6 +1517,7 @@
+ 	int ret = 0;
+ 	struct v4l2_mbus_framefmt mbus_framefmt;
+ 
++	printk("## VIN: --- Inside vidioc_s_dv_preset\n");
+ 	ti81xxvin_dbg(2, debug, "vidioc_s_dv_preset\n");
+ 
+ 	if (buf_obj->started) {
+@@ -1579,6 +1600,7 @@
+ 	int ret = 0;
+ 	struct v4l2_mbus_framefmt mbus_framefmt;
+ 
++	printk("## VIN: --- Inside vidioc_s_std\n");
+ 	ti81xxvin_dbg(2, debug, "vidioc_s_std\n");
+ 
+ 	if (buf_obj->started) {
+@@ -1638,6 +1660,7 @@
+ 	struct ti81xxvin_fh *fh = priv;
+ 	struct ti81xxvin_instance_obj *inst = fh->instance;
+ 
++	printk("## VIN: --- Inside vidioc_g_dv_preset\n");
+ 	ti81xxvin_dbg(2, debug, "vidioc_g_dv_preset\n");
+ 
+ 	preset->preset = inst->video.cur_dv_preset.preset;
+@@ -1653,6 +1676,7 @@
+ static int vidioc_g_std(struct file *file, void *priv,
+ 		v4l2_std_id *norm)
+ {
++	printk("## VIN: --- Inside vidioc_g_std\n");
+ 	struct ti81xxvin_fh *fh = priv;
+ 	struct ti81xxvin_instance_obj *inst = fh->instance;
+ 
+@@ -1676,6 +1700,7 @@
+ 	struct ti81xxvin_buffer_obj *buf_obj = &inst->buf_obj;
+ 	int ret = 0;
+ 
++	printk("## VIN: --- Inside vidioc_enum_dv_presets\n");
+ 	ti81xxvin_dbg(2, debug, "vidioc_enum_dv_presets\n");
+ 	if (mutex_lock_interruptible(&buf_obj->buf_lock))
+ 		return -ERESTARTSYS;
+@@ -1707,6 +1732,7 @@
+ 	int ret = 0;
+ 
+ 	ti81xxvin_dbg(2, debug, "vidioc_reqbufs\n");
++	printk("## VIN: --- Inside vidioc_reqbufs\n");
+ 
+ 	/**
+ 	 * This file handle has not initialized the instance,
+@@ -1767,6 +1793,7 @@
+ 	struct ti81xxvin_buffer_obj *buf_obj = &inst->buf_obj;
+ 	int r;
+ 
++	printk("## VIN: --- Inside vidioc_querybuf\n");
+ 	mutex_lock(&buf_obj->buf_lock);
+ 	ti81xxvin_dbg(2, debug, "vidioc_querybuf\n");
+ 
+@@ -1798,6 +1825,7 @@
+ 	u32 addr, offset;
+ 	int ret = 0;
+ 
++	//printk("## VIN: --- Inside vidioc_qbuf\n");
+ 	//printk("fmt.type %d  tbuf type%d\n", buf_obj->fmt.type, tbuf.type);
+ 	if (buf_obj->fmt.type != tbuf.type) {
+ 		ti81xxvin_err("invalid buffer type\n");
+@@ -2050,6 +2078,7 @@
+ 	struct ti81xxvin_buffer_obj *buf_obj = &inst->buf_obj;
+ 	struct ti81xxvin_buffer_params *params = &inst->video.buf_params;
+ 
++	printk("## VIN: --- Inside vidioc_cropcap\n");
+ 	if (V4L2_BUF_TYPE_VIDEO_CAPTURE != crop->type)
+ 		return -EINVAL;
+ 	if (params->interlaced)
+@@ -2068,6 +2097,7 @@
+ 	struct ti81xxvin_fh *fh = priv;
+ 	struct ti81xxvin_instance_obj *inst = fh->instance;
+ 
++	printk("## VIN: --- Inside vidioc_g_crop\n");
+ 	if (crop->type == V4L2_BUF_TYPE_VIDEO_CAPTURE) {
+ 		crop->c = inst->crop;
+ 		return 0;
+@@ -2086,34 +2116,49 @@
+ 	u32 decoder_height = inst->video.buf_params.height;
+ 	struct ti81xxvin_buffer_params *params = &inst->video.buf_params;
+ 
++	printk("## VIN: --- Inside vidioc_s_crop\n");
++	printk("## VIN: inst->capt_num is %d\n",inst->captctrl->capt_num);
++
+ 	if (buf_obj->started)
+ 		return -EBUSY;
+ 
++	printk("## VIN: check interruptible\n");
+ 	if (mutex_lock_interruptible(&buf_obj->buf_lock))
+ 		return -ERESTARTSYS;
+ 
+-	if (params->interlaced) {
+-		mutex_unlock(&buf_obj->buf_lock);
+-		return -EINVAL;
+-	}
+-	if (crop->type == V4L2_BUF_TYPE_VIDEO_CAPTURE) {
+-		err = ti81xxvin_new_crop(decoder_width, decoder_height,
+-				&inst->crop, &crop->c);
+-		inst->win.w.left = 0;
+-		inst->win.w.top = 0;
+-		inst->win.w.width = inst->crop.width;
+-		inst->win.w.height = inst->crop.height;
+-		mutex_unlock(&buf_obj->buf_lock);
+-		return err;
++	//printk("## VIN: check interlaced\n");
++	//if (params->interlaced) {
++	//	mutex_unlock(&buf_obj->buf_lock);
++	//	return -EINVAL;
++	//}
++	if (inst->captctrl->capt_num != 4) {
++		printk("## VIN: trying to set crop\n");
++		if (crop->type == V4L2_BUF_TYPE_VIDEO_CAPTURE) {
++			err = ti81xxvin_new_crop(decoder_width, decoder_height,
++					&inst->crop, &crop->c);
++			inst->win.w.left = 0;
++			inst->win.w.top = 0;
++			inst->win.w.width = inst->crop.width;
++			inst->win.w.height = inst->crop.height;
++			mutex_unlock(&buf_obj->buf_lock);
++			return err;
++		} else {
++			mutex_unlock(&buf_obj->buf_lock);
++			return -EINVAL;
++		}
+ 	} else {
++		printk("## VIN: crop do not apply\n");
+ 		mutex_unlock(&buf_obj->buf_lock);
+-		return -EINVAL;
++		return 0;
+ 	}
++
+ }
+ 
+ static int vidioc_try_fmt_vid_overlay(struct file *file, void *priv,
+ 		struct v4l2_format *f)
+ {
++
++	printk("## VIN: --- Inside vidioc_try_fmt_vid_overlay\n");
+ 	int err = -EINVAL;
+ 	struct ti81xxvin_fh *fh = priv;
+ 	struct ti81xxvin_instance_obj *inst = fh->instance;
+@@ -2140,14 +2185,16 @@
+ 	if (mutex_lock_interruptible(&buf_obj->buf_lock))
+ 		return -ERESTARTSYS;
+ 
+-	if (params->interlaced) {
+-		mutex_unlock(&buf_obj->buf_lock);
+-		return -EINVAL;
+-	}
+-	err = ti81xxvin_new_window(&inst->crop, &inst->win, win);
+-	if (err) {
+-		mutex_unlock(&buf_obj->buf_lock);
+-		return err;
++	if (inst->captctrl->capt_num != 4) {
++		if (params->interlaced) {
++			mutex_unlock(&buf_obj->buf_lock);
++			return -EINVAL;
++		}
++		err = ti81xxvin_new_window(&inst->crop, &inst->win, win);
++		if (err) {
++			mutex_unlock(&buf_obj->buf_lock);
++			return err;
++		}
+ 	}
+ 	mutex_unlock(&buf_obj->buf_lock);
+ 	return 0;
+@@ -2212,6 +2259,7 @@
+ 	struct ti81xxvin_buffer_obj *buf_obj = &inst->buf_obj;
+ 	int ret;
+ 
++	printk("## VIN: --- Inside vidioc_streamoff\n");
+ 	mutex_lock(&buf_obj->buf_lock);
+ 	ti81xxvin_dbg(2, debug, "vidioc_streamoff\n");
+ 
+@@ -2231,8 +2279,10 @@
+ 		ti81xxvin_dbg(1, debug, "instance->started\n");
+ 		return -EINVAL;
+ 	}
+-	ret = ti81xxvin_hdvpss_stop(inst);
+ 
++	printk("## VIN: Calling hdvpss_stop, return here is %d\n",ret);
++	ret = ti81xxvin_hdvpss_stop(inst);
++	printk("## VIN: hdvpss_stop return is %d\n",ret);
+ 	/* Set io_allowed member to false */
+ 	fh->io_allowed = 0;
+ 	/* Reset io_usrs member of instance object */
+@@ -2246,6 +2296,7 @@
+ 	struct ti81xxvin_fh *fh = priv;
+ 	struct ti81xxvin_instance_obj *inst = fh->instance;
+ 
++	printk("## VIN: --- Inside vidioc_default\n");
+ 	switch (cmd) {
+ 	case TICAPT_CHECK_OVERFLOW:
+ 		ti81xxvin_check_overflow(inst,
+Index: kernel/linux-2.6.37-psp04.04.00.01/drivers/video/ti81xx/vpss/fvid2.c
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/drivers/video/ti81xx/vpss/fvid2.c	2014-10-24 15:14:21.507411345 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/drivers/video/ti81xx/vpss/fvid2.c	2014-11-27 16:21:29.026897244 -0600
+@@ -285,6 +285,8 @@
+ 			  status);
+ 		goto exit;
+ 	}
++	vps_timeout = 0;
++	printk("waiting timeout");
+ 	do_gettimeofday(&stime);
+ 	etime = stime;
+ 	while ((fctrl->fcrprms->fvid2handle ==
+@@ -367,6 +369,8 @@
+ 	fctrl->createcmdprms->cmdtype = VPS_FVID2_CMDTYPE_SIMPLEX;
+ 	fctrl->createcmdprms->simplexcmdarg = (void *)fctrl->fdltprms_phy;
+ 
++	printk("## FVID2: SENDING DELETE CMD TO M3");
++
+ 	/*send event to proxy in M3*/
+ 	#ifdef CONFIG_TI81XX_VPSS_SYSNLINK_NOTIFY
+ 	status = Notify_sendEvent(fctrl->rmprocid,
+@@ -381,8 +385,9 @@
+ 				  fctrl->createcmdprms_phy,
+ 				  1);
+ 	#endif
++	printk("## FVID2: MSG SEND");
+ 	if (status < 0) {
+-		VPSSERR("set delete event failed status 0x%08x\n", status);
++		printk("set delete event failed status 0x%08x\n", status);
+ 		return -EINVAL;
+ 	} else {
+ 		do_gettimeofday(&stime);
+@@ -395,13 +400,13 @@
+ 				do_gettimeofday(&etime);
+ 				td = time_diff(stime, etime);
+ 				if (vps_timeout < td) {
+-					VPSSERR("delete time out\n");
++					printk("delete time out\n");
+ 					return -ETIMEDOUT;
+ 				}
+ 			}
+ 		}
+ 
+-		VPSSDBG("delete event return %d within %d ms\n",
++		printk("delete event return %d within %d ms\n",
+ 			 fctrl->fdltprms->returnvalue,
+ 			 td);
+ 
+@@ -424,11 +429,12 @@
+ 
+ 		#endif
+ 		if (status < 0)
+-			VPSSERR("unregister Event status 0x%08x\n", status);
++			printk("unregister Event status 0x%08x\n", status);
+ 	}
+ 
+ 	r = fctrl->fdltprms->returnvalue;
+ 	vps_free_fvid2_ctrl(fctrl);
++	printk("fvid2_delete return is %d at kernel lvl\n", r);
+ 	return r;
+ 
+ }

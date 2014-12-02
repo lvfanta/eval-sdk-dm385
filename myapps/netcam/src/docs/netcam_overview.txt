@@ -1,0 +1,48 @@
+netcam is a python based network connected camera framework
+utilitizing GStreamer for audio / video streaming.  netcam exposes
+camera control via JSON HTTP commands or by adding other protocols
+such as VISCA. netcam supports a rich set of audio / video protocols
+since all the underlying GStreamer capabilities are available.
+
+Audio / video streaming
+
+The heart of netcam is Streamer, a python class that exposes audio /
+video functionality as a set of controllable streaming
+pipelines. Streamer exposes key GStreamer concepts, such as 
+
+* text based pipeline descriptions, 
+* play / pause / fast forward / rewind pipeline control,
+* pipeline configuration such as frame rate, resolution, encoding
+  bitrate, etc, and
+* pipeline status
+
+Device control
+
+The camera exposes a web server allowing easy netcam viewing and
+control.  The javascript running in the web browser interacts with
+the camera using JSON HTTP commands.  Depending on the camera's
+features, new web APIs can easily be added.
+
+For network cameras designed for use in more conventional multi-camera
+survailance deployments, protocols like VISCA can be supported to
+allow for seamless integration.  Utilizing python simplifies
+supporting new protocols or extending protocols that are already
+supported.
+
+The netcam Controller python module supports the device control features.
+
+Web services
+
+The python Web Server Gateway Interface along with Fast CGI is used to
+simplify exposing the Controller API as JSON HTTP commands.  Any
+compatible web server can be used, with netcam examples shown
+utilizing the lighttpd web server.
+
+The browser user interface can be supported using any javascript
+framework that supports JSON.
+
+Network services
+
+Network services, such as Network Time Protocol, device discovery
+email alerts are not directly part of netcam, but can be easily
+supported using existing software technologies.

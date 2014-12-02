@@ -1,0 +1,46 @@
+#$L$
+# Copyright (C) 2014 Ridgerun (http://www.ridgerun.com). 
+#$L$
+
+
+BOOTARGS=$(shell cat $(IMAGEDIR)/cmdline)
+BOOTCMD=nboot $(CONFIG_INSTALLER_LOAD_ADDRS) 0 \$${kernel_offset}
+
+WORKDIR=$(IMAGEDIR)/openfd
+
+TEMPLATES_DIR = $(INSTALLERDIR)/templates
+TEMPLATE_IN = $(TEMPLATES_DIR)/external.txt.in
+TEMPLATE_OUT = $(WORKDIR)/external.txt.out
+
+SUBSTITUTIONS = -e 's?$${bootargs}?$(BOOTARGS)?g' \
+  -e 's?$${bootcmd}?$(BOOTCMD)?g' \
+  -e 's?$${mach_desc}?$(MACH_DESCRIPTION)?g'
+
+# Note: Both --template-file and --output-file are the same, because the initial
+# template TEMPLATE_IN, was already modified by installsubstitutions to
+# TEMPLATE_OUT, so we pass the modified TEMPLATE_OUT file as input to openfd
+SD_SCRIPT_ARGS = --sd-mmap-file $(SD_SCRIPT_MMAP_FILE) \
+  --flash-mmap-file $(NAND_MMAP_FILE) \
+  --template-file $(TEMPLATE_OUT) \
+  --output-file $(TEMPLATE_OUT) \
+  --mkimage-bin $(BOOTLOADERDIR)/src/tools/mkimage \
+  --uboot-min-file $(IMAGEDIR)/u-boot.min.sd \
+  --uboot-file $(IMAGEDIR)/bootloader \
+  --uboot-bootargs "$(BOOTARGS)" \
+  --work-dir $(WORKDIR)
+
+ifeq ($(CONFIG_INSTALLER_SD_DEVICE_LOOPBACK),y)
+SD_SCRIPT_MODE=sd-script-img
+SD_SCRIPT_ARGS += --image $(IMAGEDIR)/sdcard-script.img \
+  --image-size-mb $(CONFIG_INSTALLER_SD_DEVICE_LOOPBACK_SIZE)
+else
+SD_SCRIPT_MODE=sd-script
+SD_SCRIPT_ARGS += --device $(CONFIG_INSTALLER_SD_DEVICE)
+endif
+  
+installsubstitutions:
+	$(V) mkdir -p $(WORKDIR)
+	$(V) sed $(SUBSTITUTIONS) $(TEMPLATE_IN) > $(TEMPLATE_OUT)
+
+install: installmemorymap $(IMAGEDIR)/fsimage installsubstitutions
+	$(V) $(INSTALLER_EXE) $(INSTALLER_ARGS) $(SD_SCRIPT_MODE) $(SD_SCRIPT_ARGS)
