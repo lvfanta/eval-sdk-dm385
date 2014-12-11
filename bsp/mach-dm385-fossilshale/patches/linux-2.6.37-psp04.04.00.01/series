@@ -8,3 +8,5 @@ ti81xxvo_driver_fix_for_fs_dm385.patch
 ov5640_sensor_driver_integration_for_fs_dm385.patch
 debug_v4l2_driver_iss.patch
 gstreamer_support_dm385_kernel.patch
+stream_reinit_fix.patch  
+debug_output_fix.patch

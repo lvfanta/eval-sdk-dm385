@@ -1,0 +1,1541 @@
+Index: kernel/linux-2.6.37-psp04.04.00.01/drivers/video/ti81xx/vpss/capt.c
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/drivers/video/ti81xx/vpss/capt.c	2014-12-10 17:42:17.470100063 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/drivers/video/ti81xx/vpss/capt.c	2014-12-11 09:03:11.635734972 -0600
+@@ -109,20 +109,20 @@
+ 
+ 	if (!r) {
+ 		if (cctrl->cchstatus->isVideoDetected) {
+-			printk(KERN_INFO "Capture capture detected(%d)",
++			VPSSDBG(KERN_INFO "Capture capture detected(%d)",
+ 				cctrl->capt_num);
+-			printk(KERN_INFO "Output Width detected(%d): %d\n",
++			VPSSDBG(KERN_INFO "Output Width detected(%d): %d\n",
+ 				cctrl->capt_num, cctrl->cchstatus->outWidth);
+-			printk(KERN_INFO "Output height detected(%d): %d\n",
++			VPSSDBG(KERN_INFO "Output height detected(%d): %d\n",
+ 				cctrl->capt_num, cctrl->cchstatus->outHeight);
+-			printk(KERN_INFO "Dropped frame count(%d): %d\n",
++			VPSSDBG(KERN_INFO "Dropped frame count(%d): %d\n",
+ 				cctrl->capt_num,
+ 				cctrl->cchstatus->droppedFrameCount);
+-			printk(KERN_INFO "Caputred frame count(%d): %d\n",
++			VPSSDBG(KERN_INFO "Caputred frame count(%d): %d\n",
+ 				cctrl->capt_num,
+ 				cctrl->cchstatus->captureFrameCount);
+ 		} else {
+-			printk(KERN_INFO "Video Not detected(%d)",
++			VPSSDBG(KERN_INFO "Video Not detected(%d)",
+ 				cctrl->capt_num);
+ 		}
+ 	}
+@@ -152,11 +152,11 @@
+ 	int r = 0;
+ 
+ 	if (cctrl == NULL){
+-		printk("## --- CCTRL IS NULL in capture_reset");
++		VPSSDBG("## --- CCTRL IS NULL in capture_reset");
+ 		return -EINVAL;
+ 	}
+ 	if ((!cctrl->isstarted) && (cctrl->handle)){
+-		printk("## --- CALLING fvid2_control CSI_RESET");
++		VPSSDBG("## --- CALLING fvid2_control CSI_RESET");
+ 		r = vps_fvid2_control(cctrl->handle, cmd, NULL, NULL);
+ 	}
+ 	return r;
+@@ -209,7 +209,7 @@
+ 	memcpy(cctrl->conecbperfrm, conecbperfrm,
+ 		sizeof(struct Vps_CaptReturnErrFrms));
+ 	if ((!cctrl->isstarted) && (cctrl->handle))
+-		printk("## capture_one_cb_per_frm going to be bad IOCTL\n");
++		VPSSDBG("## capture_one_cb_per_frm going to be bad IOCTL\n");
+ 		r = vps_fvid2_control(cctrl->handle,
+ 			IOCTL_VPS_CAPT_ONE_CB_PER_FRM,
+ 			(struct Vps_CaptOneCallBackPerFrm *)
+@@ -222,7 +222,7 @@
+ /* this will be the call back register to the VPSS m3 for the VSYNC isr*/
+ static int capture_complete_cb(void *handle, void *appdata, void * reserved)
+ {
+-	//printk("### -- IN CAPTURE CALLABCK\n");
++	//VPSSDBG("### -- IN CAPTURE CALLABCK\n");
+ 
+ 	struct vps_capt_ctrl *cctrl = get_capture_ctrl_from_handle(handle);
+ 	struct vps_isr_data *isrd;
+@@ -231,7 +231,7 @@
+ 	if (cctrl == NULL)
+ 		return -EINVAL;
+ 
+-	//printk("### -- CCTRLnum: %d \n", cctrl->capt_num);
++	//VPSSDBG("### -- CCTRLnum: %d \n", cctrl->capt_num);
+ 	spin_lock_irqsave(&cctrl->buf_irqlock, flags);
+ 	list_for_each_entry(isrd, &cctrl->cb_list, list) {
+ 		if (isrd->isr)
+@@ -246,8 +246,8 @@
+ 	struct Iss_CaptFrameSkip frameSkip;
+ 	u32	capinstid, cmd, driverid;
+ 	int r = 0, i;
+-	printk("### -- IN CAPTURE_CREATE [capt.c]\n");
+-	printk("## create capture with id: %d\n", cctrl->capt_num);
++	VPSSDBG("### -- IN CAPTURE_CREATE [capt.c]\n");
++	VPSSDBG("## create capture with id: %d\n", cctrl->capt_num);
+ 
+ 	cctrl->cbparams->appdata = NULL;
+ 	cctrl->cbparams->errlist = NULL;
+@@ -258,38 +258,38 @@
+ 		cctrl->framelist[i]->numframes = 1;
+ 	switch (cctrl->capt_num) {
+ 	case 0:
+-		printk("## case0\n");
++		VPSSDBG("## case0\n");
+ 		capinstid = VPS_CAPT_INST_VIP0_PORTA;
+ 		driverid = FVID2_VPS_CAPT_VIP_DRV;
+ 		break;
+ 	case 1:
+-		printk("## case1\n");
++		VPSSDBG("## case1\n");
+ 		capinstid = VPS_CAPT_INST_VIP0_PORTB;
+ 		driverid = FVID2_VPS_CAPT_VIP_DRV;
+ 		break;
+ 	case 2:
+-		printk("## case2\n");
++		VPSSDBG("## case2\n");
+ 		capinstid = VPS_CAPT_INST_VIP1_PORTA;
+ 		driverid = FVID2_VPS_CAPT_VIP_DRV;
+ 		break;
+ 	case 3:
+-		printk("## case3\n");
++		VPSSDBG("## case3\n");
+ 		capinstid = VPS_CAPT_INST_VIP1_PORTB;
+ 		driverid = FVID2_VPS_CAPT_VIP_DRV;
+ 		break;
+ 	case 4:
+-		printk("## case4\n");
++		VPSSDBG("## case4\n");
+ 		capinstid = ISS_CAPT_INST_CSI;
+ 		driverid = FVID2_ISS_CAPT_DRV;
+ 		break;
+ 	default:
+-		printk("## case_def\n");
++		VPSSDBG("## case_def\n");
+ 		BUG();
+ 	}
+ 
+ 	if (cctrl->capt_num != 4) {
+ 
+-		printk("## calling vps_fvid2_create\n");
++		VPSSDBG("## calling vps_fvid2_create\n");
+ 		cctrl->handle = vps_fvid2_create(driverid, capinstid,
+ 			(void *)cctrl->ccp_phy, (void *)cctrl->ccs_phy,
+ 			(struct fvid2_cbparams *)cctrl->cbp_phy);
+@@ -301,7 +301,7 @@
+ 
+ 		if (VPS_CAPT_INST_VIP0_PORTA == capinstid ||
+ 			VPS_CAPT_INST_VIP0_PORTB == capinstid) {
+-			printk("## set command to IOCTL_VPS_CAPT_RESET_VIP0");
++			VPSSDBG("## set command to IOCTL_VPS_CAPT_RESET_VIP0");
+ 			cmd = IOCTL_VPS_CAPT_RESET_VIP0;
+ 		} else {
+ 			VPSSDBG("## set command to IOCTL_VPS_CAPT_RESET_VIP1");
+@@ -310,7 +310,7 @@
+ 
+ 	} else {
+ 
+-		printk("## calling iss_fvid2_create\n");
++		VPSSDBG("## calling iss_fvid2_create\n");
+ 		cctrl->handle = vps_fvid2_create(driverid, capinstid,
+ 			(void *)cctrl->issccp_phy, (void *)cctrl->issccs_phy,
+ 			(struct fvid2_cbparams *)cctrl->cbp_phy);
+@@ -323,17 +323,17 @@
+ 		frameSkip.channelNum = cctrl->issccparams->channelNumMap[0][0];
+ 		frameSkip.frameSkipMask[0] = 0;
+ 		frameSkip.frameSkipMask[0] = 0;
+-		printk("## calling iss_capt_set_frame_skip\n");
++		VPSSDBG("## calling iss_capt_set_frame_skip\n");
+ 		cmd = IOCTL_ISS_CAPT_SET_FRAME_SKIP;
+ 		r = capture_control(cctrl, cmd, (void *)&frameSkip, NULL);
+ 
+-		if (r) printk("## set_frame_skip failed !!!\n");
++		if (r) VPSSDBG("## set_frame_skip failed !!!\n");
+ 
+-		printk("## set command to IOCTL_ISS_CAPT_RESET_CSI/n");
++		VPSSDBG("## set command to IOCTL_ISS_CAPT_RESET_CSI/n");
+ 		cmd = IOCTL_ISS_CAPT_RESET_CSI;
+ 	}
+ 
+-	printk("## calling capture_control -> cmd\n");
++	VPSSDBG("## calling capture_control -> cmd\n");
+ 	r = capture_control(cctrl, cmd, NULL, NULL);
+ 	return r;
+ }
+@@ -342,7 +342,7 @@
+ {
+ 	int r = 0;
+ 
+-	printk("## CAPT: delete capture%d\n", cctrl->capt_num);
++	VPSSDBG("## CAPT: delete capture%d\n", cctrl->capt_num);
+ 
+ 	if ((cctrl == NULL) || (cctrl->handle == NULL))
+ 		return -EINVAL;
+@@ -350,7 +350,7 @@
+ 	r = vps_fvid2_delete(cctrl->handle, NULL);
+ 	if (!r)
+ 		cctrl->handle = NULL;
+-	printk("## CAPT: capture_delete is returning %d\n", r);
++	VPSSDBG("## CAPT: capture_delete is returning %d\n", r);
+ 	return r;
+ 
+ }
+@@ -376,14 +376,14 @@
+ 	int r = 0;
+ 
+ 	VPSSDBG("stop capture%d\n", cctrl->capt_num);
+-	printk("## CAPT: INSIDE CAPTURE_STOP\n");
++	VPSSDBG("## CAPT: INSIDE CAPTURE_STOP\n");
+ 
+ 	if ((cctrl == NULL) || (cctrl->handle == NULL))
+ 		return -EINVAL;
+ 	if (cctrl->isstarted) {
+-		printk("## CAPT: trying to stop\n");
++		VPSSDBG("## CAPT: trying to stop\n");
+ 		r = vps_fvid2_stop(cctrl->handle, NULL);
+-		printk("## CAPT: stop result is %d\n", r);
++		VPSSDBG("## CAPT: stop result is %d\n", r);
+ 		if (!r) {
+ 			cctrl->isstarted = false;
+ 			/*capture_print_status(cctrl);*/
+@@ -397,7 +397,7 @@
+ {
+ 	int r = 0;
+ 
+-	//printk("## --- Inside capture_queue\n");
++	//VPSSDBG("## --- Inside capture_queue\n");
+ 	if ((cctrl == NULL) || (cctrl->handle == NULL))
+ 		return -EINVAL;
+ 
+@@ -421,7 +421,7 @@
+ 	r = vps_fvid2_queue(cctrl->handle,
+ 			    (struct fvid2_framelist *)cctrl->frmls_phy[index],
+ 			    0);
+-	//printk("## fvid2_queue ret: %u\n", r);
++	//VPSSDBG("## fvid2_queue ret: %u\n", r);
+ 	return r;
+ 
+ 
+@@ -483,7 +483,7 @@
+ 	u32 scfmt, fm;
+ 	int r = 0;
+ 
+-	//printk("## --- Inside capture_set_buffer\n");
++	//VPSSDBG("## --- Inside capture_set_buffer\n");
+ 	VPSSDBG("set buffer\n");
+ 	if (cctrl == NULL)
+ 		return -EINVAL;
+@@ -494,7 +494,7 @@
+ 	framelist = cctrl->framelist[idx];
+ 	framelist->frames[0] = (struct fvid2_frame *)cctrl->frm_phy[idx];
+ 	framelist->numframes = 1;
+-	//printk("## check capt_id: %u\n", cctrl->capt_num);
++	//VPSSDBG("## check capt_id: %u\n", cctrl->capt_num);
+ 	if (cctrl->capt_num != 4)
+ 	frame->channelnum = (cctrl->capt_num != 4) ?
+ 		(cctrl->ccparams->channelNumMap[0][0]) :
+@@ -502,10 +502,10 @@
+ 	/*get the field merged flag*/
+ 	fm = cctrl->fmt.fieldmerged[FVID2_YUV_INT_ADDR_IDX];
+ 
+-	//printk("## check buffer format: %u\n", cctrl->fmt.dataformat);
++	//VPSSDBG("## check buffer format: %u\n", cctrl->fmt.dataformat);
+ 	switch (cctrl->fmt.dataformat) {
+ 	case FVID2_DF_YUV422I_YUYV:
+-		//printk("## FVID2_DF_YUV422I_YUYV\n");
++		//VPSSDBG("## FVID2_DF_YUV422I_YUYV\n");
+ 		if (scfmt == FVID2_SF_PROGRESSIVE) {
+ 			frame->addr[FVID2_FRAME_ADDR_IDX] \
+ 				[FVID2_YUV_INT_ADDR_IDX] =
+@@ -534,7 +534,7 @@
+ 		}
+ 	break;
+ 	case FVID2_DF_YUV422SP_UV:
+-		printk("## FVID2_DF_YUV422SP_UV\n");
++		VPSSDBG("## FVID2_DF_YUV422SP_UV\n");
+ 		if (scfmt == FVID2_SF_PROGRESSIVE) {
+ 			frame->addr[FVID2_FIELD_EVEN_ADDR_IDX] \
+ 				[FVID2_YUV_SP_Y_ADDR_IDX] =
+@@ -570,7 +570,7 @@
+ 
+ 		break;
+ 	case FVID2_DF_YUV420SP_UV:
+-		printk("## FVID2_DF_YUV420SP_UV\n");
++		VPSSDBG("## FVID2_DF_YUV420SP_UV\n");
+ 		if (scfmt == FVID2_SF_PROGRESSIVE) {
+ 			frame->addr[FVID2_FIELD_EVEN_ADDR_IDX] \
+ 				[FVID2_YUV_SP_Y_ADDR_IDX] = (void *)addr +
+@@ -637,7 +637,7 @@
+ 
+ 	break;
+ 	case FVID2_DF_RGB24_888:
+-		printk("## FVID2_DF_RGB24_888\n");
++		VPSSDBG("## FVID2_DF_RGB24_888\n");
+ 		if (scfmt == FVID2_SF_PROGRESSIVE) {
+ 			frame->addr[FVID2_FRAME_ADDR_IDX] \
+ 				[FVID2_RGB_ADDR_IDX] = (void *)addr + offset;
+@@ -665,7 +665,7 @@
+ 		}
+ 	break;
+ 	default:
+-		printk("## CAPT: Unrecognized format for set buffer\n");
++		VPSSDBG("## CAPT: Unrecognized format for set buffer\n");
+ 		BUG();
+ 	}
+ 	if (r)
+@@ -678,13 +678,13 @@
+ {
+ 	int r = 0;
+ 
+-	printk("## CAPT: check format, currently is %d\n",fmt->dataformat);
++	VPSSDBG("## CAPT: check format, currently is %d\n",fmt->dataformat);
+ 	VPSSDBG("check format\n");
+ 	if (FVID2_DF_YUV422I_YUYV != fmt->dataformat &&
+ 		FVID2_DF_YUV420SP_UV != fmt->dataformat &&
+ 		FVID2_DF_YUV422SP_UV != fmt->dataformat &&
+ 		FVID2_DF_RGB24_888 != fmt->dataformat) {
+-		printk("Buffer format (%d) not supported!!\n",
++		VPSSDBG("Buffer format (%d) not supported!!\n",
+ 		    fmt->dataformat);
+ 		r = -EINVAL;
+ 	}
+@@ -693,7 +693,7 @@
+ 
+ 	/* Check whether window width/startX is even */
+ 	if (fmt->width & 0x01u)	{
+-		printk("width(%d) can't be odd!!\n", fmt->width);
++		VPSSDBG("width(%d) can't be odd!!\n", fmt->width);
+ 		r = -EINVAL;
+ 	}
+ 
+@@ -702,7 +702,7 @@
+ 			/* Check whether window height is multiple of 4
+ 			* for YUV420 format in interlaced display mode */
+ 			if (fmt->height & 0x03u) {
+-				printk("height(%d)should be multiple"
++				VPSSDBG("height(%d)should be multiple"
+ 					"of 4 for YUV420 "
+ 					"format in display mode!!\n",
+ 					fmt->height);
+@@ -712,13 +712,13 @@
+ 			/* Check whether window height/startY is
+ 			even for YUV420 format */
+ 			if (fmt->height & 0x01u) {
+-				printk("height(%d) can't be odd for "
++				VPSSDBG("height(%d) can't be odd for "
+ 					"YUV420 format!!\n",
+ 					fmt->height);
+ 				r = -EINVAL;
+ 		    }
+ 		}
+-	} printk("## CATP: return value is %d\n", r);
++	} VPSSDBG("## CATP: return value is %d\n", r);
+ 	return r;
+ 
+ }
+@@ -728,7 +728,7 @@
+ {
+ 	int r = 0;
+ 
+-	printk("## CAPT: check stream started %d\n",cctrl->isstarted);
++	VPSSDBG("## CAPT: check stream started %d\n",cctrl->isstarted);
+ 	if (cctrl == NULL || cctrl->isstarted)
+ 		r = -EINVAL;
+ 
+@@ -737,16 +737,16 @@
+ 		cctrl->isfmtset = 1;
+ 	}
+ 
+-	printk("## --- IN CAPTURE_SET_FORMAT\n");
+-	printk("## -------------------\n");
+-	printk("## width:      %u\n",fmt->width);
+-	printk("## height:     %u\n",fmt->height);
+-	printk("## pitch[0]:   %u\n",fmt->pitch[0]);
+-	printk("## pitch[1]:   %u\n",fmt->pitch[1]);
+-	printk("## pitch[2]:   %u\n",fmt->pitch[2]);
+-	printk("## dataformat: %u\n",fmt->dataformat);
+-	printk("## bpp:		   %u\n",fmt->bpp);
+-	printk("## -------------------\n");
++	VPSSDBG("## --- IN CAPTURE_SET_FORMAT\n");
++	VPSSDBG("## -------------------\n");
++	VPSSDBG("## width:      %u\n",fmt->width);
++	VPSSDBG("## height:     %u\n",fmt->height);
++	VPSSDBG("## pitch[0]:   %u\n",fmt->pitch[0]);
++	VPSSDBG("## pitch[1]:   %u\n",fmt->pitch[1]);
++	VPSSDBG("## pitch[2]:   %u\n",fmt->pitch[2]);
++	VPSSDBG("## dataformat: %u\n",fmt->dataformat);
++	VPSSDBG("## bpp:		   %u\n",fmt->bpp);
++	VPSSDBG("## -------------------\n");
+ 
+ 	if (r)
+ 		VPSSERR("failed to set format\n");
+@@ -860,7 +860,7 @@
+ 	size += sizeof(struct Vps_CaptOneCallBackPerFrm);
+ 	size += sizeof(struct Vps_CaptStoragePrms);
+ 
+-	printk("Adding mem space for iss struct\n");
++	VPSSDBG("Adding mem space for iss struct\n");
+ 	size += sizeof(struct Iss_CaptCreateParams);
+ 	size += sizeof(struct Iss_CaptCreateStatus);
+ 	size += sizeof(struct Iss_CaptFrameSkip);
+@@ -981,7 +981,7 @@
+ 	struct vps_capt_ctrl *cctrl;
+ 	struct vps_isr_data *isrd, *new;
+ 
+-	printk("## VIN: registering isr, idx %u\n",idx);
++	VPSSDBG("## VIN: registering isr, idx %u\n",idx);
+ 	cctrl = vps_capt_get_ctrl(idx);
+ 	if (cctrl == NULL)
+ 		return -EINVAL;
+@@ -1116,8 +1116,8 @@
+ 	/* If we are going to set ISS init capture parameters */
+ 	if (cctrl->capt_num == 4){
+ 
+-		printk("## --- Setting ISS capture parameters\n");
+-		printk("## iss capture mode\n");
++		VPSSDBG("## --- Setting ISS capture parameters\n");
++		VPSSDBG("## iss capture mode\n");
+ 
+ 		cctrl->fmt.dataformat = FVID2_DF_YUV422I_UYVY;
+ 		cctrl->fmt.scanformat = FVID2_SF_INTERLACED;
+@@ -1136,7 +1136,7 @@
+ 
+ 		/* Config Out Stream Info for first stream*/
+ 
+-		printk("## iss out stream info\n");
++		VPSSDBG("## iss out stream info\n");
+ 		pVipOutPrm = &cctrl->issccparams->outStreamInfo[0];
+ 		pVipOutPrm->dataFormat = FVID2_DF_YUV422I_UYVY;
+ 		pVipOutPrm->memType = VPS_VPDMA_MT_NONTILEDMEM;
+@@ -1150,7 +1150,7 @@
+ 
+ 		/* Config Out Stream Info for second stream*/
+ 
+-		printk("## iss out stream info\n");
++		VPSSDBG("## iss out stream info\n");
+ 		pVipOutPrm = &cctrl->issccparams->outStreamInfo[1];
+ 		pVipOutPrm->dataFormat = FVID2_DF_YUV420SP_UV;
+ 		pVipOutPrm->memType = VPS_VPDMA_MT_NONTILEDMEM;
+@@ -1198,7 +1198,7 @@
+ 		pScParams->scConfig = NULL;
+         pScParams->scCoeffConfig = NULL;
+ 
+-		printk("## iss channel num map\n");
++		VPSSDBG("## iss channel num map\n");
+ 		cctrl->issccparams->channelNumMap[0][0] =
+ 					Iss_captMakeChannelNum(ISS_CAPT_INST_CSI, 0, 0);
+ 
+@@ -1209,8 +1209,8 @@
+ 		cctrl->issccparams->captureMode = ISS_CAPT_INMODE_ISIF;
+ 		cctrl->issccparams->vsProcessFunc = NULL;
+ 
+-		printk("## iss capture create parameters done\n");
+-		/*printk("## --- Setting ISS capture parameters\n");
++		VPSSDBG("## iss capture create parameters done\n");
++		/*VPSSDBG("## --- Setting ISS capture parameters\n");
+ 		cctrl->issccparams->videoCaptureMode = ISS_CAPT_VIDEO_CAPTURE_MODE_SINGLE_STREAM;
+ 		cctrl->issccparams->videoIfMode = ISS_CAPT_BAYER_12BIT;
+ 		cctrl->issccparams->inDataFormat = FVID2_DF_YUV420SP_UV;
+@@ -1218,7 +1218,7 @@
+ 		cctrl->issccparams->numCh = 1;
+ 		cctrl->issccparams->numStream = 2;
+ 
+-		printk("## stream configs\n");
++		VPSSDBG("## stream configs\n");
+ 		for (StreamId = 0; StreamId < cctrl->issccparams->numStream; StreamId++)
+ 		{
+ 			//pOutPrm = &pInstPrm->outParams[StreamId];
+@@ -1255,7 +1255,7 @@
+ 			pScParams[StreamId]->scCoeffConfig = NULL;
+ 		}
+ 
+-		printk("## output configs\n");
++		VPSSDBG("## output configs\n");
+ 		for (StreamId = 0; StreamId < ISS_CAPT_STREAM_ID_MAX; StreamId++)
+ 		{
+ 			pOutInfo = &cctrl->issccparams->outStreamInfo[StreamId];
+@@ -1465,7 +1465,7 @@
+ 	u32 size = 0;
+ 	u32 offset = 0;
+ 	VPSSDBG("cap init\n");
+-	printk("## --- Starting vpss_init\n");
++	VPSSDBG("## --- Starting vpss_init\n");
+ 
+ 	INIT_LIST_HEAD(&cctrl_list);
+ 
+@@ -1499,6 +1499,7 @@
+ 		capctrl = kzalloc(sizeof(*capctrl), GFP_KERNEL);
+ 
+ 		if (capctrl == NULL) {
++
+ 			VPSSERR("failed to allocate cap%d\n", i);
+ 			r = -ENOMEM;
+ 			goto cleanup;
+@@ -1507,9 +1508,9 @@
+ 		assign_payload_addr(capctrl, pinfo, &offset);
+ 		/*init cap control*/
+ 		capctrl->capt_num = i;
+-		printk("## creating capture control structure #%d\n",i);
++		VPSSDBG("## creating capture control structure #%d\n",i);
+ 		vps_fvid2_capt_ctrl_init(capctrl);
+-		printk("## adding capture control structure #%d to cctrl_list\n",i);
++		VPSSDBG("## adding capture control structure #%d to cctrl_list\n",i);
+ 		vps_capt_add_ctrl(capctrl);
+ 		mutex_init(&capctrl->cmutex);
+ 		spin_lock_init(&capctrl->buf_irqlock);
+Index: kernel/linux-2.6.37-psp04.04.00.01/drivers/media/video/ti81xx/ti81xxvin_main.c
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/drivers/media/video/ti81xx/ti81xxvin_main.c	2014-11-26 16:48:19.836172427 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/drivers/media/video/ti81xx/ti81xxvin_main.c	2014-12-11 09:12:16.811761357 -0600
+@@ -106,7 +106,7 @@
+ 	struct timeval timevalue;
+ 	struct videobuf_buffer *buf;
+ 
+-	//printk("## VIN: capt_num: %u\n", inst->captctrl->capt_num);
++	//ti81xxvin_dbg(2, debug, "## VIN: capt_num: %u\n", inst->captctrl->capt_num);
+ 
+ 	if (0 == buf_obj->started || (inst->captctrl->capt_num == 4))
+ 		goto restart_timer;
+@@ -165,7 +165,7 @@
+ 			(crop->width == win->w.width) &&
+ 			(cctrl->decoder_height == crop->height) &&
+ 			(crop->height == win->w.height)) {
+-		printk("## VIN: scale not enable OK\n");
++		ti81xxvin_dbg(2, debug, "## VIN: scale not enable OK\n");
+ 		out_stream_info->scEnable = 0;
+ 		return 0;
+ 	}
+@@ -216,7 +216,7 @@
+ 	/* TODO Set the video interface mode according to the
+ 	 * decoder selected */
+ 	cparams->videoIfMode = VPS_CAPT_VIDEO_IF_MODE_16BIT;
+-	printk("## VIN: test videoIfMode: %u\n",cparams->videoIfMode);
++	ti81xxvin_dbg(2, debug, "## VIN: test videoIfMode: %u\n",cparams->videoIfMode);
+ 	/* Select the inDataformat according the input selected in decoder */
+ 	cparams->inDataFormat = FVID2_DF_YUV422P;
+ 	cparams->periodicCallbackEnable = 0;
+@@ -230,7 +230,7 @@
+ 	cparams->videoCaptureMode = sdev_info->video_capture_mode;
+ 	cparams->videoIfMode = sdev_info->video_if_mode;
+ 	cparams->inDataFormat = sdev_info->input_data_format;
+-	printk("## VIN: test videoIfMode: %u\n",cparams->videoIfMode);
++	ti81xxvin_dbg(2, debug, "## VIN: test videoIfMode: %u\n",cparams->videoIfMode);
+ 	memcpy(cctrl->vipcfg, &sdev_info->vip_cfg,
+ 			sizeof(struct Vps_VipConfig));
+ 	memcpy(cctrl->vipportcfg, &sdev_info->vip_port_cfg,
+@@ -386,7 +386,7 @@
+ 	ti81xxvin_dbg(2, debug, "ti81xxvin_config_format\n");
+ 
+ 	if (V4L2_DV_INVALID != inst->video.cur_dv_preset.preset) {
+-		printk("## VIN: dv_preset was not invalid\n");
++		ti81xxvin_dbg(2, debug, "## VIN: dv_preset was not invalid\n");
+ 		switch (inst->video.cur_dv_preset.preset) {
+ 		case V4L2_DV_1080P30:
+ 		case V4L2_DV_1080I30:
+@@ -396,7 +396,7 @@
+ 			buf_obj->fmt.fmt.pix.field = V4L2_FIELD_INTERLACED;
+ 			break;
+ 		default:
+-			printk("## VIN: dv_preset was %d\n",inst->video.cur_dv_preset.preset);
++			ti81xxvin_dbg(2, debug, "## VIN: dv_preset was %d\n",inst->video.cur_dv_preset.preset);
+ 			buf_obj->fmt.fmt.pix.field = V4L2_FIELD_NONE;
+ 		}
+ 	} else if (V4L2_STD_UNKNOWN != inst->video.cur_std_id)
+@@ -404,11 +404,11 @@
+ 	else
+ 		buf_obj->fmt.fmt.pix.field = V4L2_FIELD_NONE;
+ 	//buf_obj->memory = V4L2_MEMORY_MMAP;
+-	printk("## VIN: using V4L2_MEMORY_USERPTR\n");
++	ti81xxvin_dbg(2, debug, "## VIN: using V4L2_MEMORY_USERPTR\n");
+ 	buf_obj->memory = V4L2_MEMORY_USERPTR;
+ 
+ 	buf_obj->fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
+-	printk("## VIN: setting V4L2_PIX_FMT_YUYV format\n"); 			//========= format ============
++	ti81xxvin_dbg(2, debug, "## VIN: setting V4L2_PIX_FMT_YUYV format\n"); 			//========= format ============
+ 	//buf_obj->fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_UYVY;
+ 	buf_obj->fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+ 	buf_obj->fmt.fmt.pix.sizeimage = buf_obj->fmt.fmt.pix.height *
+@@ -691,7 +691,7 @@
+ 	}
+ 	if (update) {
+ 		ti81xxvin_vps_config_format(inst);
+-		printk("## VIN: about to call captctrl->check_format\n");
++		ti81xxvin_dbg(2, debug, "## VIN: about to call captctrl->check_format\n");
+ 		ret = inst->captctrl->check_format(inst->captctrl,
+ 				&inst->captctrl->fmt);
+ 
+@@ -711,7 +711,7 @@
+ 	struct videobuf_buffer *buf;
+ 	struct timeval timevalue;
+ 
+-	//printk("## VIN: IN capture complete cb !!!\n");
++	//ti81xxvin_dbg(2, debug, "## VIN: IN capture complete cb !!!\n");
+ 	instance_id = (int)(dev_id);
+ 	inst = dev->dev[instance_id];
+ 	field = inst->buf_obj.fmt.fmt.pix.field;
+@@ -719,12 +719,12 @@
+ 	buf_obj = &inst->buf_obj;
+ 	spin_lock(&buf_obj->buf_irqlock);
+ 	if ((!inst->dma_queue.next) || list_empty(&inst->dma_queue)) {
+-		printk("## VIN: list empty\n");
++		ti81xxvin_dbg(2, debug, "## VIN: list empty\n");
+ 		v4l2_err(ti81xxvin_dev->driver, "list empty\n");
+ 		goto isr_error;
+ 	}
+ 	if (0 == buf_obj->started) {
+-		printk("## VIN: Instance not started\n");
++		ti81xxvin_dbg(2, debug, "## VIN: Instance not started\n");
+ 		v4l2_err(ti81xxvin_dev->driver, "Instance not started\n");
+ 		goto isr_error;
+ 	}
+@@ -741,7 +741,7 @@
+ 			struct videobuf_buffer,
+ 			queue);
+ 	buf->state = VIDEOBUF_ACTIVE;
+-	//printk("## VIN: isr done\n");
++	//ti81xxvin_dbg(2, debug, "## VIN: isr done\n");
+ isr_error:
+ 	spin_unlock(&buf_obj->buf_irqlock);
+ }
+@@ -765,11 +765,11 @@
+ 	buf_obj = &inst->buf_obj;
+ 
+ 	ti81xxvin_dbg(2, debug, "ti81xxvin_buffer_setup\n");
+-	printk("## VIN: IN ti81xxvin_buffer_setup\n");
++	ti81xxvin_dbg(2, debug, "## VIN: IN ti81xxvin_buffer_setup\n");
+ 
+ 	/* If memory type is not mmap, return */
+ 	if (V4L2_MEMORY_MMAP != buf_obj->memory){
+-		printk("## VIN: mem type = user_ptr\n");
++		ti81xxvin_dbg(2, debug, "## VIN: mem type = user_ptr\n");
+ 		return 0;
+ 	}
+ 
+@@ -803,7 +803,7 @@
+ 	struct ti81xxvin_instance_obj *inst = fh->instance;
+ 	struct ti81xxvin_buffer_obj *buf_obj;
+ 
+-	//printk("## VIN: IN ti81xxvin_buffer_prepare\n");
++	//ti81xxvin_dbg(2, debug, "## VIN: IN ti81xxvin_buffer_prepare\n");
+ 	ti81xxvin_dbg(2, debug, "ti81xxvin_buffer_prepare\n");
+ 
+ 	buf_obj = &inst->buf_obj;
+@@ -852,7 +852,7 @@
+ 
+ 	buf_obj = &inst->buf_obj;
+ 
+-	//printk("## VIN: IN ti81xxvin_buffer_queue\n");
++	//ti81xxvin_dbg(2, debug, "## VIN: IN ti81xxvin_buffer_queue\n");
+ 	ti81xxvin_dbg(2, debug, "ti81xxvin_buffer_queue\n");
+ 
+ 	if (!buf_obj->last_done_buffer)
+@@ -901,7 +901,7 @@
+ 	struct ti81xxvin_instance_obj *inst = fh->instance;
+ 	struct ti81xxvin_buffer_obj *buf_obj;
+ 
+-	//printk("## VIN: IN ti81xxvin_buffer_release\n");
++	//ti81xxvin_dbg(2, debug, "## VIN: IN ti81xxvin_buffer_release\n");
+ 	buf_obj = &inst->buf_obj;
+ 	videobuf_dma_contig_free(q, vb);
+ 	vb->state = VIDEOBUF_NEEDS_INIT;
+@@ -914,7 +914,7 @@
+ 	struct Vps_CaptOneCallBackPerFrm onecallback;
+ 	struct Vps_CaptStoragePrms storageparams;
+ 
+-	printk("## VIN: calling capt_create\n");
++	ti81xxvin_dbg(2, debug, "## VIN: calling capt_create\n");
+ 	ret = (inst->captctrl->create(inst->captctrl));
+ 	if (ret) {
+ 		ti81xxvin_err("ti81xxvin_vps_create failed\n");
+@@ -922,14 +922,14 @@
+ 	}
+ 	returnerrfrm.enable = 1;
+ 
+-	printk("## VIN: calling capt_control [IOCTL_VPS_CAPT_RETURN_ERR_FRM]\n");
++	ti81xxvin_dbg(2, debug, "## VIN: calling capt_control [IOCTL_VPS_CAPT_RETURN_ERR_FRM]\n");
+ 	ret = (inst->captctrl->control(inst->captctrl,
+ 				IOCTL_VPS_CAPT_RETURN_ERR_FRM,
+ 				(void *)&returnerrfrm, NULL));
+ 	BUG_ON(ret);
+ 
+ 	onecallback.enable = 1;
+-	printk("## VIN: calling capt_control [IOCTL_VPS_CAPT_ONE_CB_PER_FRM]\n");
++	ti81xxvin_dbg(2, debug, "## VIN: calling capt_control [IOCTL_VPS_CAPT_ONE_CB_PER_FRM]\n");
+ 	ret = (inst->captctrl->control(inst->captctrl,
+ 				IOCTL_VPS_CAPT_ONE_CB_PER_FRM,
+ 				(void *)&onecallback, NULL));
+@@ -938,7 +938,7 @@
+ 		storageparams.chNum = 0;
+ 		storageparams.bufferFmt = FVID2_BUF_FMT_FRAME;
+ 		storageparams.fieldMerged = 1;
+-		printk("## VIN: calling capt_control [IOCTL_VPS_CAPT_SET_STORAGE_FMT]\n");
++		ti81xxvin_dbg(2, debug, "## VIN: calling capt_control [IOCTL_VPS_CAPT_SET_STORAGE_FMT]\n");
+ 		ret = (inst->captctrl->control(inst->captctrl,
+ 					IOCTL_VPS_CAPT_SET_STORAGE_FMT,
+ 					(void *)&storageparams, NULL));
+@@ -951,7 +951,7 @@
+ {
+ 	int ret = 0;
+ 	ret = (inst->captctrl->delete(inst->captctrl));
+-	printk("## VIN: ti81xxvin_vps_delete return is %d\n", ret);
++	ti81xxvin_dbg(2, debug, "## VIN: ti81xxvin_vps_delete return is %d\n", ret);
+ 	msleep(2000);
+ 	BUG_ON(ret);
+ }
+@@ -967,7 +967,7 @@
+ {
+ 	int ret = 0;
+ 	ret = (inst->captctrl->stop(inst->captctrl));
+-	printk("## VIN: captctrl->stop return is %d\n",ret);
++	ti81xxvin_dbg(2, debug, "## VIN: captctrl->stop return is %d\n",ret);
+ 	return ret;
+ }
+ /* This function is protected under mutex */
+@@ -986,11 +986,11 @@
+ 		buf->state = VIDEOBUF_DONE;
+ 	}
+ 
+-	printk("## VIN: ISRs unregistered\n");
++	ti81xxvin_dbg(2, debug, "## VIN: ISRs unregistered\n");
+ 	/* Stop the FVID2_driver */
+ 	ti81xxvin_vps_stop(inst);
+ 
+-	printk("## VIN: videobuff_streamoff\n");
++	ti81xxvin_dbg(2, debug, "## VIN: videobuff_streamoff\n");
+ 	ret = videobuf_streamoff(&buf_obj->buffer_queue);
+ 	if (ret)
+ 		ti81xxvin_dbg(1, debug, "videobuf streamoff failed\n");
+@@ -1002,7 +1002,7 @@
+ 	if (ret && (ret != -ENOIOCTLCMD))
+ 		ti81xxvin_dbg(1, debug, "stream off failed in subdev\n");
+ 
+-	printk("## VIN: hdvpss_stop return is %d\n",ret);
++	ti81xxvin_dbg(2, debug, "## VIN: hdvpss_stop return is %d\n",ret);
+ 	return ret;
+ }
+ 
+@@ -1012,15 +1012,15 @@
+ 	u32 *addr;
+ 	u32 reg_val;
+ 
+-	//printk("## VIN: call to ti81xxvin_check_overflow\n");
++	//ti81xxvin_dbg(2, debug, "## VIN: call to ti81xxvin_check_overflow\n");
+ 
+ 	addr = (u32 *)inst->addr;
+ 	stat->porta_overflow = 0;
+ 	stat->portb_overflow = 0;
+ 
+-	printk("## VIN: fail here\n");
++	ti81xxvin_dbg(2, debug, "## VIN: fail here\n");
+ 	reg_val = addr[VIP_REG_FIQ_STATUS_OFFSET];
+-	printk("## VIN: fail here reg_val %u\n",reg_val);
++	ti81xxvin_dbg(2, debug, "## VIN: fail here reg_val %u\n",reg_val);
+ 	if (reg_val & VIP_PARSER_FIQ_STATUS_OUTPUT_FIFO_PRTA_LUMA_STATUS_MASK) {
+ 		stat->porta_overflow = 1;
+ 		if (clear)
+@@ -1053,7 +1053,7 @@
+ {
+ 	struct ti81xxvin_config *config = ti81xxvin_dev->platform_data;
+ 
+-	printk("## VIN: --- Inside vidioc_querycap\n");
++	ti81xxvin_dbg(2, debug, "## VIN: --- Inside vidioc_querycap\n");
+ 	cap->version = TI81XXVIN_VERSION_CODE;
+ 	cap->capabilities = V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_STREAMING |
+ 		V4L2_BUF_TYPE_VIDEO_OVERLAY;
+@@ -1073,10 +1073,10 @@
+ static int vidioc_g_priority(struct file *file, void *priv,
+ 		enum v4l2_priority *prio)
+ {
+-	printk("## VIN: --- Inside vidioc_g_priority\n");
+ 	struct ti81xxvin_fh *fh = priv;
+ 	struct ti81xxvin_instance_obj *ints = fh->instance;
+ 
++	ti81xxvin_dbg(2, debug, "## VIN: --- Inside vidioc_g_priority\n");
+ 	*prio = v4l2_prio_max(&ints->prio);
+ 
+ 	return 0;
+@@ -1091,10 +1091,10 @@
+ static int vidioc_s_priority(struct file *file, void *priv,
+ 	enum v4l2_priority p)
+ {
+-	printk("## VIN: --- Inside vidioc_s_priority\n");
+ 	struct ti81xxvin_fh *fh = priv;
+ 	struct ti81xxvin_instance_obj *ints = fh->instance;
+ 
++	ti81xxvin_dbg(2, debug, "## VIN: --- Inside vidioc_s_priority\n");
+ 	return v4l2_prio_change(&ints->prio, &fh->prio, p);
+ }
+ 
+@@ -1107,7 +1107,7 @@
+ static int vidioc_enum_fmt_vid_cap(struct file *file, void  *priv,
+ 		struct v4l2_fmtdesc *fmt)
+ {
+-	printk("## VIN: --- Inside vidioc_enum_fmt_vid_cap\n");
++	ti81xxvin_dbg(2, debug, "## VIN: --- Inside vidioc_enum_fmt_vid_cap\n");
+ 	switch (fmt->index) {
+ 	case (0):
+ 		strcpy(fmt->description, "YCbCr4:2:2 YC Interleaved");
+@@ -1150,7 +1150,7 @@
+ 
+ 	ti81xxvin_dbg(2, debug, "VIDIOC_S_FMT\n");
+ 
+-	printk("## VIN: --- Inside vidioc_s_fmt_vid_cap\n");
++	ti81xxvin_dbg(2, debug, "## VIN: --- Inside vidioc_s_fmt_vid_cap\n");
+ 	/* If streaming is started, return error */
+ 	if (buf_obj->started) {
+ 		ti81xxvin_dbg(1, debug, "Streaming is started\n");
+@@ -1170,7 +1170,7 @@
+ 
+ 	pixfmt = &fmt->fmt.pix;
+ 	/* Check for valid field format */
+-	printk("## VIN: checking format, in vidioc_s_fmt_vid_cap\n");
++	ti81xxvin_dbg(2, debug, "## VIN: checking format, in vidioc_s_fmt_vid_cap\n");
+ 	ret = ti81xxvin_check_format(inst, pixfmt, 1);
+ 
+ 	if (ret)
+@@ -1193,11 +1193,12 @@
+ static int vidioc_try_fmt_vid_cap(struct file *file, void *priv,
+ 		struct v4l2_format *fmt)
+ {
+-	printk("## VIN: --- Inside vidioc_try_fmt_vid_cap\n");
+ 	struct ti81xxvin_fh *fh = priv;
+ 	struct ti81xxvin_instance_obj *inst = fh->instance;
+ 	struct v4l2_pix_format *pixfmt = &fmt->fmt.pix;
+-	printk("## VIN: checking format, in vidioc_try_fmt_vid_cap\n");
++
++	ti81xxvin_dbg(2, debug, "## VIN: --- Inside vidioc_try_fmt_vid_cap\n");
++	ti81xxvin_dbg(2, debug, "## VIN: checking format, in vidioc_try_fmt_vid_cap\n");
+ 	return ti81xxvin_check_format(inst, pixfmt, 1);
+ }
+ 
+@@ -1214,7 +1215,7 @@
+ 	struct ti81xxvin_instance_obj *inst = fh->instance;
+ 	struct ti81xxvin_buffer_obj *buf_obj = &inst->buf_obj;
+ 
+-	printk("## VIN: --- Inside vidioc_g_fmt_vid_cap\n");
++	ti81xxvin_dbg(2, debug, "## VIN: --- Inside vidioc_g_fmt_vid_cap\n");
+ 	/* Check the validity of the buf_obj type */
+ 	if (buf_obj->fmt.type != fmt->type)
+ 		return -EINVAL;
+@@ -1237,12 +1238,12 @@
+ static int vidioc_enum_input(struct file *file, void *priv,
+ 		struct v4l2_input *input)
+ {
+-	printk("## VIN: --- Inside vidioc_enum_input\n");
+ 	struct ti81xxvin_config *config = ti81xxvin_dev->platform_data;
+ 	struct ti81xxvin_inst_config *inst_cfg;
+ 	struct ti81xxvin_fh *fh = priv;
+ 	struct ti81xxvin_instance_obj *inst = fh->instance;
+ 
++	ti81xxvin_dbg(2, debug, "## VIN: --- Inside vidioc_enum_input\n");
+ 	inst_cfg = &config->inst_config[inst->instance_id];
+ 
+ 	if (input->index >= inst_cfg->input_count) {
+@@ -1263,11 +1264,11 @@
+  */
+ static int vidioc_g_input(struct file *file, void *priv, unsigned int *index)
+ {
+-	printk("## VIN: --- Inside vidioc_g_input\n");
+ 	struct ti81xxvin_fh *fh = priv;
+ 	struct ti81xxvin_instance_obj *inst = fh->instance;
+ 	struct ti81xxvin_vid_obj *vid_ch = &inst->video;
+ 
++	ti81xxvin_dbg(2, debug, "## VIN: --- Inside vidioc_g_input\n");
+ 	*index = vid_ch->input_idx;
+ 
+ 	return 0;
+@@ -1290,7 +1291,7 @@
+ 	struct ti81xxvin_subdev_info *subdev_info;
+ 	int ret = 0, sd_index = 0;
+ 
+-	printk("## VIN: --- Inside vidioc_s_input\n");
++	ti81xxvin_dbg(2, debug, "## VIN: --- Inside vidioc_s_input\n");
+ 	inst_cfg = &config->inst_config[inst->instance_id];
+ 
+ 	if (buf_obj->started) {
+@@ -1348,11 +1349,11 @@
+ 	struct ti81xxvin_buffer_obj *buf_obj = &inst->buf_obj;
+ 	int ret = 0;
+ 	struct v4l2_mbus_framefmt mbus_framefmt;
+-	struct ti81xxvin_config *config = ti81xxvin_dev->platform_data;
+-	struct ti81xxvin_subdev_info *subdev_info;
+-	int sd_index;
++	//struct ti81xxvin_config *config = ti81xxvin_dev->platform_data;
++	//struct ti81xxvin_subdev_info *subdev_info;
++	//int sd_index;
+ 
+-	printk("## VIN: --- Inside vidioc_query_dv_preset\n");
++	ti81xxvin_dbg(2, debug, "## VIN: --- Inside vidioc_query_dv_preset\n");
+ 	ti81xxvin_dbg(2, debug, "vidioc_query_dv_preset\n");
+ 
+ 	if (mutex_lock_interruptible(&buf_obj->buf_lock))
+@@ -1396,7 +1397,7 @@
+  
+ 	if (inst->captctrl->capt_num != 4) qpreset->preset = V4L2_DV_480P59_94;
+     else {
+-		 printk("## VIN: setting dv preset to V4L2_DV_1080P30 ## (should be V4L2_DV_1080I30)\n");
++		 ti81xxvin_dbg(2, debug, "## VIN: setting dv preset to V4L2_DV_1080P30 ## (should be V4L2_DV_1080I30)\n");
+          qpreset->preset = V4L2_DV_1080P30;
+     }
+ //         inst->video.cur_dv_preset.preset = V4L2_DV_INVALID;
+@@ -1406,7 +1407,7 @@
+ 
+          inst->video.cur_dv_preset = *qpreset;
+ 	/* Get the information about the standard */
+-	printk("## VIN: updating std info\n");
++	ti81xxvin_dbg(2, debug, "## VIN: updating std info\n");
+ 	if (ti81xxvin_update_std_info(inst, &mbus_framefmt)) {
+ 		ret = -EINVAL;
+ 		ti81xxvin_err("Error getting the standard info\n");
+@@ -1439,10 +1440,10 @@
+ #endif	/* Configure the default format information according to the std
+ 	 * selected
+ 	 */
+-	printk("## VIN: config format\n");
++	ti81xxvin_dbg(2, debug, "## VIN: config format\n");
+ 	ti81xxvin_config_format(inst);
+ 
+-	printk("## VIN: vps config format\n");
++	ti81xxvin_dbg(2, debug, "## VIN: vps config format\n");
+ 	ti81xxvin_vps_config_format(inst);
+ vidioc_query_dv_preset_exit:
+ 	mutex_unlock(&buf_obj->buf_lock);
+@@ -1466,7 +1467,7 @@
+ 	struct v4l2_mbus_framefmt mbus_framefmt;
+ 
+ 	ti81xxvin_dbg(2, debug, "vidioc_query_dv_preset\n");
+-	printk("## VIN: --- Inside vidioc_querystd\n");
++	ti81xxvin_dbg(2, debug, "## VIN: --- Inside vidioc_querystd\n");
+ 
+ 	if (mutex_lock_interruptible(&buf_obj->buf_lock))
+ 		return -ERESTARTSYS;
+@@ -1517,7 +1518,7 @@
+ 	int ret = 0;
+ 	struct v4l2_mbus_framefmt mbus_framefmt;
+ 
+-	printk("## VIN: --- Inside vidioc_s_dv_preset\n");
++	ti81xxvin_dbg(2, debug, "## VIN: --- Inside vidioc_s_dv_preset\n");
+ 	ti81xxvin_dbg(2, debug, "vidioc_s_dv_preset\n");
+ 
+ 	if (buf_obj->started) {
+@@ -1600,7 +1601,7 @@
+ 	int ret = 0;
+ 	struct v4l2_mbus_framefmt mbus_framefmt;
+ 
+-	printk("## VIN: --- Inside vidioc_s_std\n");
++	ti81xxvin_dbg(2, debug, "## VIN: --- Inside vidioc_s_std\n");
+ 	ti81xxvin_dbg(2, debug, "vidioc_s_std\n");
+ 
+ 	if (buf_obj->started) {
+@@ -1660,7 +1661,7 @@
+ 	struct ti81xxvin_fh *fh = priv;
+ 	struct ti81xxvin_instance_obj *inst = fh->instance;
+ 
+-	printk("## VIN: --- Inside vidioc_g_dv_preset\n");
++	ti81xxvin_dbg(2, debug, "## VIN: --- Inside vidioc_g_dv_preset\n");
+ 	ti81xxvin_dbg(2, debug, "vidioc_g_dv_preset\n");
+ 
+ 	preset->preset = inst->video.cur_dv_preset.preset;
+@@ -1676,10 +1677,10 @@
+ static int vidioc_g_std(struct file *file, void *priv,
+ 		v4l2_std_id *norm)
+ {
+-	printk("## VIN: --- Inside vidioc_g_std\n");
+ 	struct ti81xxvin_fh *fh = priv;
+ 	struct ti81xxvin_instance_obj *inst = fh->instance;
+ 
++	ti81xxvin_dbg(2, debug, "## VIN: --- Inside vidioc_g_std\n");
+ 	ti81xxvin_dbg(2, debug, "vidioc_g_std\n");
+ 
+ 	*norm = inst->video.cur_std_id;
+@@ -1700,7 +1701,7 @@
+ 	struct ti81xxvin_buffer_obj *buf_obj = &inst->buf_obj;
+ 	int ret = 0;
+ 
+-	printk("## VIN: --- Inside vidioc_enum_dv_presets\n");
++	ti81xxvin_dbg(2, debug, "## VIN: --- Inside vidioc_enum_dv_presets\n");
+ 	ti81xxvin_dbg(2, debug, "vidioc_enum_dv_presets\n");
+ 	if (mutex_lock_interruptible(&buf_obj->buf_lock))
+ 		return -ERESTARTSYS;
+@@ -1732,7 +1733,7 @@
+ 	int ret = 0;
+ 
+ 	ti81xxvin_dbg(2, debug, "vidioc_reqbufs\n");
+-	printk("## VIN: --- Inside vidioc_reqbufs\n");
++	ti81xxvin_dbg(2, debug, "## VIN: --- Inside vidioc_reqbufs\n");
+ 
+ 	/**
+ 	 * This file handle has not initialized the instance,
+@@ -1793,7 +1794,7 @@
+ 	struct ti81xxvin_buffer_obj *buf_obj = &inst->buf_obj;
+ 	int r;
+ 
+-	printk("## VIN: --- Inside vidioc_querybuf\n");
++	ti81xxvin_dbg(2, debug, "## VIN: --- Inside vidioc_querybuf\n");
+ 	mutex_lock(&buf_obj->buf_lock);
+ 	ti81xxvin_dbg(2, debug, "vidioc_querybuf\n");
+ 
+@@ -1825,8 +1826,8 @@
+ 	u32 addr, offset;
+ 	int ret = 0;
+ 
+-	//printk("## VIN: --- Inside vidioc_qbuf\n");
+-	//printk("fmt.type %d  tbuf type%d\n", buf_obj->fmt.type, tbuf.type);
++	//ti81xxvin_dbg(2, debug, "## VIN: --- Inside vidioc_qbuf\n");
++	//ti81xxvin_dbg(2, debug, "fmt.type %d  tbuf type%d\n", buf_obj->fmt.type, tbuf.type);
+ 	if (buf_obj->fmt.type != tbuf.type) {
+ 		ti81xxvin_err("invalid buffer type\n");
+ 		ret =  -EINVAL;
+@@ -1841,7 +1842,7 @@
+ 	ti81xxvin_dbg(2, debug, "vidioc_qbuf\n");
+ 
+ 	ret = videobuf_qbuf(&buf_obj->buffer_queue, buf);
+-	//printk("## VIN: check if buffer is started and ret %u\n",ret);
++	//ti81xxvin_dbg(2, debug, "## VIN: check if buffer is started and ret %u\n",ret);
+ 	if (buf_obj->started && !ret) {
+ 		struct videobuf_buffer *vb;
+ 		vb = list_entry(inst->dma_queue.prev,
+@@ -1853,14 +1854,14 @@
+ 			addr = videobuf_to_dma_contig(vb);
+ 		offset = (inst->win.w.left) +
+ 			(inst->win.w.top * buf_obj->fmt.fmt.pix.bytesperline);
+-		//printk("## VIN: calling captctrl->set_buffer()\n");
++		//ti81xxvin_dbg(2, debug, "## VIN: calling captctrl->set_buffer()\n");
+ 		inst->captctrl->set_buffer(inst->captctrl, addr, vb->i, offset);
+ 
+ 		/* TODO Check all the software conditions which are checked in
+ 		 * FVID2_queue so that queue call should never return error
+ 		 */
+ 
+-		//printk("## VIN: calling captctrl->queue()\n");
++		//ti81xxvin_dbg(2, debug, "## VIN: calling captctrl->queue()\n");
+ 		ret = inst->captctrl->queue(inst->captctrl, vb->i);
+ 		BUG_ON(ret);
+ 	}
+@@ -1886,19 +1887,19 @@
+ 	mutex_lock(&buf_obj->buf_lock);
+ 	ti81xxvin_dbg(2, debug, "vidioc_dqbuf\n");
+ 
+-	//printk("## VIN: calling captctrl->dequeue\n");
++	//ti81xxvin_dbg(2, debug, "## VIN: calling captctrl->dequeue\n");
+ 	ret = inst->captctrl->dequeue(inst->captctrl, 0);
+-	//printk("## VIN: captctrl->dequeue done: %d\n", ret);
++	//ti81xxvin_dbg(2, debug, "## VIN: captctrl->dequeue done: %d\n", ret);
+ 	num_frms_dequeued = inst->captctrl->framelist[0]->numframes;
+-	//printk("## VIN: dequeued %u frames\n", num_frms_dequeued);
++	//ti81xxvin_dbg(2, debug, "## VIN: dequeued %u frames\n", num_frms_dequeued);
+ 
+ 	/*if (num_frms_dequeued > 1)
+ 		BUG_ON(num_frms_dequeued);*/ 			// TEMPORAL COMMENT JUST FOR TESTING PURPOSES
+ 
+-	//printk("## VIN: calling videobuf_dqbuf\n");
++	//ti81xxvin_dbg(2, debug, "## VIN: calling videobuf_dqbuf\n");
+ 	ret = videobuf_dqbuf(&buf_obj->buffer_queue, buf,
+ 			file->f_flags & O_NONBLOCK);
+-	//printk("## VIN: videobuf_dqbuf ret %u\n", ret);
++	//ti81xxvin_dbg(2, debug, "## VIN: videobuf_dqbuf ret %u\n", ret);
+ 	mutex_unlock(&buf_obj->buf_lock);
+ 	return ret;
+ 
+@@ -1922,7 +1923,7 @@
+ 	struct videobuf_buffer *vb;
+ 	u32 addr, offset;
+ 
+-	printk("## VIN: --- STARTING VIDIOC_STREAMON \n");
++	ti81xxvin_dbg(2, debug, "## VIN: --- STARTING VIDIOC_STREAMON \n");
+ 	ti81xxvin_dbg(2, debug, "vidioc_streamon\n");
+ 	mutex_lock(&buf_obj->buf_lock);
+ 	vid_ch = &inst->video;
+@@ -1943,7 +1944,7 @@
+ 		ret = -EBUSY;
+ 		goto vidioc_streamon_failed;
+ 	}
+-	printk("## VIN: checking format, in vidioc_streamon\n");
++	ti81xxvin_dbg(2, debug, "## VIN: checking format, in vidioc_streamon\n");
+ 	ret = ti81xxvin_check_format(inst, &buf_obj->fmt.fmt.pix, 0);
+ 	if (ret) {
+ 		ti81xxvin_dbg(1, debug, "io not allowed\n");
+@@ -1954,7 +1955,7 @@
+ 	 * Set format for starting the driver
+ 	 */
+ 	/* Enable streamon on the sub device */
+-	printk("## VIN: Enable streamon on sub device (set enable on ov5640 script)\n");
++	ti81xxvin_dbg(2, debug, "## VIN: Enable streamon on sub device (set enable on ov5640 script)\n");
+ 	//ret = v4l2_subdev_call(ti81xxvin_obj.sd[inst->curr_sd_index], video,
+ 	//		s_stream, 1);
+ 
+@@ -1962,7 +1963,7 @@
+ 		ti81xxvin_dbg(1, debug, "stream on failed in subdev\n");
+ 		goto vidioc_streamon_failed;
+ 	}
+-	printk("## VIN: creating vps\n");
++	ti81xxvin_dbg(2, debug, "## VIN: creating vps\n");
+ 	ret = ti81xxvin_vps_create(inst);
+ 	if (ret) {
+ 		ti81xxvin_err("Vps create failed\n");
+@@ -1970,11 +1971,11 @@
+ 
+ 	} msleep(1000);
+ 	/* Register interrupt handler */
+-	printk("## VIN: registering vps_capture isr\n");
++	ti81xxvin_dbg(2, debug, "## VIN: registering vps_capture isr\n");
+ 	vps_capture_register_isr(ti81xxvin_instance_isr,		// CHECK THIS!!!!
+ 			(void *)inst->instance_id, inst->instance_id);
+ 	/* Call videobuf_streamon to start streaming in videobuf */
+-	printk("## VIN: calling videobuf_streamon\n");
++	ti81xxvin_dbg(2, debug, "## VIN: calling videobuf_streamon\n");
+ 	ret = videobuf_streamon(&buf_obj->buffer_queue);
+ 	if (ret) {
+ 		ti81xxvin_dbg(1, debug, "videobuf_streamon\n");
+@@ -1986,33 +1987,33 @@
+ 		goto streamon_failed;
+ 	}
+ 
+-	printk("## VIN: queue list of buffers\n");
++	ti81xxvin_dbg(2, debug, "## VIN: queue list of buffers\n");
+ 	list_for_each_entry(vb, &inst->dma_queue, queue) {
+ 		/*though queue all prime buffer, but only the first
+ 		buffer will be displayed. other still int the QUEUE state*/
+ 		if (vb->i == 0)
+ 			vb->state = VIDEOBUF_ACTIVE;
+ 		if (V4L2_MEMORY_USERPTR == buf_obj->memory){
+-			printk("## VIN: using userptr mem\n");
++			ti81xxvin_dbg(2, debug, "## VIN: using userptr mem\n");
+ 			addr = vb->boff;
+ 		}
+ 		else
+ 			addr = videobuf_to_dma_contig(vb);
+ 		offset = (inst->win.w.left) +
+ 			(inst->win.w.top * buf_obj->fmt.fmt.pix.bytesperline);
+-		printk("## VIN: setting buffer\n");
++		ti81xxvin_dbg(2, debug, "## VIN: setting buffer\n");
+ 		inst->captctrl->set_buffer(inst->captctrl, addr, vb->i, offset);
+ 
+ 		/* TODO Check all the software conditions which are checked in
+ 		* FVID2_queue so that queue call should never return error
+ 		*/
+-		printk("## VIN: queuing buffer\n");
++		ti81xxvin_dbg(2, debug, "## VIN: queuing buffer\n");
+ 		ret = inst->captctrl->queue(inst->captctrl, vb->i);
+ 		BUG_ON(ret);
+ 
+ 	}
+ 
+-	//printk("## VIN: going to finish, ret %u\n", ret);
++	//ti81xxvin_dbg(2, debug, "## VIN: going to finish, ret %u\n", ret);
+ 	//goto finish;
+ 
+ 	/* Initialize field_id and started member */
+@@ -2030,35 +2031,34 @@
+ 		goto vps_start_failed;
+ 	}
+ 
+-	printk("## VIN: vps_start\n");
++	ti81xxvin_dbg(2, debug, "## VIN: vps_start\n");
+ 	ret = ti81xxvin_vps_start(inst);
+ 	if (ret) {
+ 		ti81xxvin_err("vps start failed\n");
+ 		goto vps_start_failed;
+ 	}
+-	printk("## VIN: vps_start done, ret %u\n",ret);
++	ti81xxvin_dbg(2, debug, "## VIN: vps_start done, ret %u\n",ret);
+ 	ret = mod_timer(&inst->overflow_timer,
+ 		jiffies + msecs_to_jiffies(100));
+ 	if (ret)
+-		printk("Setting up of timer failed\n");
++		ti81xxvin_dbg(2, debug, "Setting up of timer failed\n");
+ 
+-finish:
+ 	mutex_unlock(&buf_obj->buf_lock);
+ 	return 0;
+ 
+ vps_start_failed:
+-	printk("## VIN: vps_start_failed\n");
++	ti81xxvin_dbg(2, debug, "## VIN: vps_start_failed\n");
+ 	videobuf_streamoff(&buf_obj->buffer_queue);
+ streamon_failed:
+-	printk("## VIN: streamon_failed\n");
++	ti81xxvin_dbg(2, debug, "## VIN: streamon_failed\n");
+ 	vps_capture_unregister_isr(ti81xxvin_instance_isr,
+ 			(void *)inst->instance_id, inst->instance_id);
+ ti81xxvin_vps_create_failed:
+-	printk("## VIN: ti81xxvin_vps_create_failed\n");
++	ti81xxvin_dbg(2, debug, "## VIN: ti81xxvin_vps_create_failed\n");
+ 	ret = v4l2_subdev_call(ti81xxvin_obj.sd[inst->curr_sd_index], video,
+ 			s_stream, 0);
+ vidioc_streamon_failed:
+-	printk("## VIN: vidioc_streamon_failed\n");
++	ti81xxvin_dbg(2, debug, "## VIN: vidioc_streamon_failed\n");
+ 	mutex_unlock(&buf_obj->buf_lock);
+ 
+ 	return ret;
+@@ -2078,7 +2078,7 @@
+ 	struct ti81xxvin_buffer_obj *buf_obj = &inst->buf_obj;
+ 	struct ti81xxvin_buffer_params *params = &inst->video.buf_params;
+ 
+-	printk("## VIN: --- Inside vidioc_cropcap\n");
++	ti81xxvin_dbg(2, debug, "## VIN: --- Inside vidioc_cropcap\n");
+ 	if (V4L2_BUF_TYPE_VIDEO_CAPTURE != crop->type)
+ 		return -EINVAL;
+ 	if (params->interlaced)
+@@ -2097,7 +2097,7 @@
+ 	struct ti81xxvin_fh *fh = priv;
+ 	struct ti81xxvin_instance_obj *inst = fh->instance;
+ 
+-	printk("## VIN: --- Inside vidioc_g_crop\n");
++	ti81xxvin_dbg(2, debug, "## VIN: --- Inside vidioc_g_crop\n");
+ 	if (crop->type == V4L2_BUF_TYPE_VIDEO_CAPTURE) {
+ 		crop->c = inst->crop;
+ 		return 0;
+@@ -2114,25 +2114,25 @@
+ 	struct ti81xxvin_buffer_obj *buf_obj = &inst->buf_obj;
+ 	u32 decoder_width = inst->video.buf_params.width;
+ 	u32 decoder_height = inst->video.buf_params.height;
+-	struct ti81xxvin_buffer_params *params = &inst->video.buf_params;
++	//struct ti81xxvin_buffer_params *params = &inst->video.buf_params;
+ 
+-	printk("## VIN: --- Inside vidioc_s_crop\n");
+-	printk("## VIN: inst->capt_num is %d\n",inst->captctrl->capt_num);
++	ti81xxvin_dbg(2, debug, "## VIN: --- Inside vidioc_s_crop\n");
++	ti81xxvin_dbg(2, debug, "## VIN: inst->capt_num is %d\n",inst->captctrl->capt_num);
+ 
+ 	if (buf_obj->started)
+ 		return -EBUSY;
+ 
+-	printk("## VIN: check interruptible\n");
++	ti81xxvin_dbg(2, debug, "## VIN: check interruptible\n");
+ 	if (mutex_lock_interruptible(&buf_obj->buf_lock))
+ 		return -ERESTARTSYS;
+ 
+-	//printk("## VIN: check interlaced\n");
++	//ti81xxvin_dbg(2, debug, "## VIN: check interlaced\n");
+ 	//if (params->interlaced) {
+ 	//	mutex_unlock(&buf_obj->buf_lock);
+ 	//	return -EINVAL;
+ 	//}
+ 	if (inst->captctrl->capt_num != 4) {
+-		printk("## VIN: trying to set crop\n");
++		ti81xxvin_dbg(2, debug, "## VIN: trying to set crop\n");
+ 		if (crop->type == V4L2_BUF_TYPE_VIDEO_CAPTURE) {
+ 			err = ti81xxvin_new_crop(decoder_width, decoder_height,
+ 					&inst->crop, &crop->c);
+@@ -2147,7 +2147,7 @@
+ 			return -EINVAL;
+ 		}
+ 	} else {
+-		printk("## VIN: crop do not apply\n");
++		ti81xxvin_dbg(2, debug, "## VIN: crop do not apply\n");
+ 		mutex_unlock(&buf_obj->buf_lock);
+ 		return 0;
+ 	}
+@@ -2158,12 +2158,12 @@
+ 		struct v4l2_format *f)
+ {
+ 
+-	printk("## VIN: --- Inside vidioc_try_fmt_vid_overlay\n");
+ 	int err = -EINVAL;
+ 	struct ti81xxvin_fh *fh = priv;
+ 	struct ti81xxvin_instance_obj *inst = fh->instance;
+ 	struct v4l2_window *win = &f->fmt.win;
+ 
++	ti81xxvin_dbg(2, debug, "## VIN: --- Inside vidioc_try_fmt_vid_overlay\n");
+ 	err = ti81xxvin_try_window(&inst->crop, win);
+ 
+ 	if (err)
+@@ -2181,7 +2181,7 @@
+ 	int err = -EINVAL;
+ 	struct ti81xxvin_buffer_params *params = &inst->video.buf_params;
+ 
+-	printk("## VIN: --- Inside vidioc_s_fmt_vid_overlay\n");
++	ti81xxvin_dbg(2, debug, "## VIN: --- Inside vidioc_s_fmt_vid_overlay\n");
+ 	if (mutex_lock_interruptible(&buf_obj->buf_lock))
+ 		return -ERESTARTSYS;
+ 
+@@ -2207,7 +2207,7 @@
+ 	struct ti81xxvin_instance_obj *inst = fh->instance;
+ 	struct v4l2_window *win = &f->fmt.win;
+ 
+-	printk("## VIN: --- Inside vidioc_g_fmt_vid_overlay\n");
++	ti81xxvin_dbg(2, debug, "## VIN: --- Inside vidioc_g_fmt_vid_overlay\n");
+ 	memset(win, 0, sizeof(*win));
+ 
+ 	/*
+@@ -2259,7 +2259,7 @@
+ 	struct ti81xxvin_buffer_obj *buf_obj = &inst->buf_obj;
+ 	int ret;
+ 
+-	printk("## VIN: --- Inside vidioc_streamoff\n");
++	ti81xxvin_dbg(2, debug, "## VIN: --- Inside vidioc_streamoff\n");
+ 	mutex_lock(&buf_obj->buf_lock);
+ 	ti81xxvin_dbg(2, debug, "vidioc_streamoff\n");
+ 
+@@ -2280,9 +2280,9 @@
+ 		return -EINVAL;
+ 	}
+ 
+-	printk("## VIN: Calling hdvpss_stop, return here is %d\n",ret);
+ 	ret = ti81xxvin_hdvpss_stop(inst);
+-	printk("## VIN: hdvpss_stop return is %d\n",ret);
++	ti81xxvin_dbg(2, debug, "## VIN: Calling hdvpss_stop, return here is %d\n",ret);
++	ti81xxvin_dbg(2, debug, "## VIN: hdvpss_stop return is %d\n",ret);
+ 	/* Set io_allowed member to false */
+ 	fh->io_allowed = 0;
+ 	/* Reset io_usrs member of instance object */
+@@ -2296,7 +2296,7 @@
+ 	struct ti81xxvin_fh *fh = priv;
+ 	struct ti81xxvin_instance_obj *inst = fh->instance;
+ 
+-	printk("## VIN: --- Inside vidioc_default\n");
++	ti81xxvin_dbg(2, debug, "## VIN: --- Inside vidioc_default\n");
+ 	switch (cmd) {
+ 	case TICAPT_CHECK_OVERFLOW:
+ 		ti81xxvin_check_overflow(inst,
+@@ -2359,15 +2359,15 @@
+ 	struct ti81xxvin_fh *fh;
+ 	int i, ret = 0;
+ 
+-	printk("## VIN: --- IN TI81XX_VIN OPEN\n");
++	ti81xxvin_dbg(2, debug, "## VIN: --- IN TI81XX_VIN OPEN\n");
+ 	ti81xxvin_dbg(2, debug, "ti81xxvin_open\n");
+ 
+ 	inst = video_get_drvdata(vdev);
+ 	setup_timer(&inst->overflow_timer, ti81xxvin_overflow_handler,
+ 		(unsigned long)inst);
+ 
+-	if(inst->captctrl != NULL) printk("## VIN: capture id: %d\n", inst->captctrl->capt_num);
+-	else printk("## VIN: capture id is not set\n");
++	if(inst->captctrl != NULL) ti81xxvin_dbg(2, debug, "## VIN: capture id: %d\n", inst->captctrl->capt_num);
++	else ti81xxvin_dbg(2, debug, "## VIN: capture id is not set\n");
+ 
+ 	vid_inst = &inst->video;
+ 	buf_obj = &inst->buf_obj;
+@@ -2375,7 +2375,7 @@
+ 	if (mutex_lock_interruptible(&buf_obj->buf_lock))
+ 		return -ERESTARTSYS;
+ 
+-	printk("## VIN: --- Going through sub_devices\n");
++	ti81xxvin_dbg(2, debug, "## VIN: --- Going through sub_devices\n");
+ 	if (NULL == inst->curr_subdev_info) {
+ 		/**
+ 		 * searinst through the sub device to see a registered
+@@ -2399,7 +2399,7 @@
+ 	}
+ 
+ 	/* Allocate memory for the file handle object */
+-	printk("## VIN: --- Allocating memory for file handle\n");
++	ti81xxvin_dbg(2, debug, "## VIN: --- Allocating memory for file handle\n");
+ 	fh = kmalloc(sizeof(struct ti81xxvin_fh), GFP_KERNEL);
+ 	if (NULL == fh) {
+ 		ti81xxvin_err("unable to allocate memory for file"
+@@ -2408,7 +2408,7 @@
+ 		goto exit;
+ 	}
+ 
+-	printk("## VIN: --- Instance management\n");
++	ti81xxvin_dbg(2, debug, "## VIN: --- Instance management\n");
+ 	/* store pointer to fh in private_data member of filep */
+ 	filep->private_data = fh;
+ 	fh->instance = inst;
+@@ -2431,7 +2431,7 @@
+ 	goto retu;
+ 
+ 	/* ISS test code for ISS driver create */
+-	printk("## VIN: --- Lets try to create the ISS drv_instance ...\n");
++	ti81xxvin_dbg(2, debug, "## VIN: --- Lets try to create the ISS drv_instance ...\n");
+ 	ret = (inst->captctrl->create(inst->captctrl));
+ 	if (ret) {
+ 		ti81xxvin_err("ti81xxvin_vps_create failed\n");
+@@ -2636,7 +2636,7 @@
+ 	int num_capt;
+ 	struct resource *hdvpss_resource;
+ 
+-	printk("## VIN: --- Starting ti81xxvin_probe\n");
++	ti81xxvin_dbg(2, debug, "## VIN: --- Starting ti81xxvin_probe\n");
+ 	ti81xxvin_dev = &pdev->dev;
+ 	err = ti81xxvin_initialize();
+ 	if (err) {
+@@ -2646,18 +2646,17 @@
+ 	}
+ 
+ 	/* get virtual addres of IO device using ioremap, store it to each instance */
+-	printk("## VIN: --- Setting virtual address\n");
++	ti81xxvin_dbg(2, debug, "## VIN: --- Setting virtual address\n");
+ 	for (i = 0; i < pdev->num_resources; i++) {
+ 		hdvpss_resource = &pdev->resource[i];
+ 		if (hdvpss_resource->flags == IORESOURCE_MEM) {
+-			printk("## VIN: ioremap start: %lX end %lX \n", hdvpss_resource->start, hdvpss_resource->end - hdvpss_resource->start);
+ 			ti81xxvin_obj.addr[i] = ioremap_nocache(
+ 				hdvpss_resource->start,
+ 				hdvpss_resource->end - hdvpss_resource->start);
+ 		}
+ 	}
+ 
+-	printk("## VIN: --- Setting up capture instances\n");
++	ti81xxvin_dbg(2, debug, "## VIN: --- Setting up capture instances\n");
+ 	for (i = 0; i < TI81XXVIN_CAPTURE_MAX_DEVICES; i++) {
+ 		/* Get the pointer to the instance object, set address of respective input port */
+ 		inst = ti81xxvin_obj.dev[i];
+@@ -2681,7 +2680,7 @@
+ 			goto hdvpss_dev_alloc_err;
+ 		}
+ 
+-		printk("## VIN: --- Video Device init\n");
++		ti81xxvin_dbg(2, debug, "## VIN: --- Video Device init\n");
+ 		/* Initialize field of video device */
+ 		*vfd = hdvpss_video_template;
+ 		vfd->v4l2_dev = &ti81xxvin_obj.v4l2_dev;
+@@ -2695,7 +2694,7 @@
+ 		inst->video_dev = vfd;
+ 	}
+ 	t = vps_capt_get_num_cap();
+-	printk("## VIN: --- Getting capture controls for %d instances\n",t);
++	ti81xxvin_dbg(2, debug, "## VIN: --- Getting capture controls for %d instances\n",t);
+ 	num_capt = 0;
+ 	for (i = 0; i < t; i++) {
+ 		struct vps_capt_ctrl *cctrl;
+@@ -2707,7 +2706,7 @@
+ 		}
+ 		ti81xxvin_obj.captctrl[ti81xxvin_obj.act_num_capt_ctrl++] =
+ 			cctrl;
+-	} printk("## VIN: --- Setting each instance\n");
++	} ti81xxvin_dbg(2, debug, "## VIN: --- Setting each instance\n");
+ 	for (j = 0; j < TI81XXVIN_CAPTURE_MAX_DEVICES; j++) {
+ 		inst = ti81xxvin_obj.dev[j];
+ 		inst->instance_id = j;
+@@ -2724,7 +2723,9 @@
+ 
+ 		/* Set the inst->video_dev->dev = inst */
+ 		video_set_drvdata(inst->video_dev, inst);
+-		printk("## VIN: instance_id = %d\n",j);
++
++		ti81xxvin_dbg(2, debug, "## VIN: instance_id = %d\n",j);
++
+ 	}
+ 
+ 	/* TODO Get the proper adapter id */
+@@ -2737,7 +2738,7 @@
+ 		i2c_adap = i2c_get_adapter(2);
+ */
+ 	/* Platform specific data from vpss.c */
+-	printk("## VIN: --- Plafform data\n");
++	ti81xxvin_dbg(2, debug, "## VIN: --- Plafform data\n");
+ 	config = pdev->dev.platform_data;
+ 	subdev_count = config->subdev_count;
+ 	ti81xxvin_obj.sd = kmalloc(sizeof(struct v4l2_subdev *) *subdev_count,
+@@ -2749,7 +2750,7 @@
+ 		goto probe_out;
+ 	}
+ 
+-	printk("## VIN: --- Registering device in V4L2 framework\n");
++	ti81xxvin_dbg(2, debug, "## VIN: --- Registering device in V4L2 framework\n");
+ 	err = v4l2_device_register(ti81xxvin_dev, &ti81xxvin_obj.v4l2_dev);
+ 	if (err) {
+ 		v4l2_err(ti81xxvin_dev->driver, "Error registering"
+Index: kernel/linux-2.6.37-psp04.04.00.01/drivers/video/ti81xx/vpss/fvid2.c
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/drivers/video/ti81xx/vpss/fvid2.c	2014-11-27 16:21:29.026897244 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/drivers/video/ti81xx/vpss/fvid2.c	2014-12-11 09:39:05.847839229 -0600
+@@ -286,7 +286,7 @@
+ 		goto exit;
+ 	}
+ 	vps_timeout = 0;
+-	printk("waiting timeout");
++	VPSSDBG("waiting timeout");
+ 	do_gettimeofday(&stime);
+ 	etime = stime;
+ 	while ((fctrl->fcrprms->fvid2handle ==
+@@ -369,7 +369,7 @@
+ 	fctrl->createcmdprms->cmdtype = VPS_FVID2_CMDTYPE_SIMPLEX;
+ 	fctrl->createcmdprms->simplexcmdarg = (void *)fctrl->fdltprms_phy;
+ 
+-	printk("## FVID2: SENDING DELETE CMD TO M3");
++	VPSSDBG("## FVID2: SENDING DELETE CMD TO M3");
+ 
+ 	/*send event to proxy in M3*/
+ 	#ifdef CONFIG_TI81XX_VPSS_SYSNLINK_NOTIFY
+@@ -385,9 +385,9 @@
+ 				  fctrl->createcmdprms_phy,
+ 				  1);
+ 	#endif
+-	printk("## FVID2: MSG SEND");
++	VPSSDBG("## FVID2: MSG SEND");
+ 	if (status < 0) {
+-		printk("set delete event failed status 0x%08x\n", status);
++		VPSSDBG("set delete event failed status 0x%08x\n", status);
+ 		return -EINVAL;
+ 	} else {
+ 		do_gettimeofday(&stime);
+@@ -400,13 +400,13 @@
+ 				do_gettimeofday(&etime);
+ 				td = time_diff(stime, etime);
+ 				if (vps_timeout < td) {
+-					printk("delete time out\n");
++					VPSSDBG("delete time out\n");
+ 					return -ETIMEDOUT;
+ 				}
+ 			}
+ 		}
+ 
+-		printk("delete event return %d within %d ms\n",
++		VPSSDBG("delete event return %d within %d ms\n",
+ 			 fctrl->fdltprms->returnvalue,
+ 			 td);
+ 
+@@ -429,12 +429,12 @@
+ 
+ 		#endif
+ 		if (status < 0)
+-			printk("unregister Event status 0x%08x\n", status);
++			VPSSDBG("unregister Event status 0x%08x\n", status);
+ 	}
+ 
+ 	r = fctrl->fdltprms->returnvalue;
+ 	vps_free_fvid2_ctrl(fctrl);
+-	printk("fvid2_delete return is %d at kernel lvl\n", r);
++	VPSSDBG("fvid2_delete return is %d at kernel lvl\n", r);
+ 	return r;
+ 
+ }
+@@ -605,7 +605,7 @@
+ 	fctrl->dqcmdprms->cmdtype = VPS_FVID2_CMDTYPE_SIMPLEX;
+ 	fctrl->dqcmdprms->simplexcmdarg = (void *)fctrl->fdqprms_phy;
+ 
+-	//printk("## FVID2: sending message to M3\n");
++	//VPSSDBG("## FVID2: sending message to M3\n");
+ 
+ 	/* send event to proxy in M3*/
+ 	#ifdef CONFIG_TI81XX_VPSS_SYSNLINK_NOTIFY
+@@ -623,16 +623,16 @@
+ 	#endif
+ 
+ 	if (status < 0) {
+-		printk("## FVID2: message failed to deliver 0x%08x\n", status);
++		VPSSDBG("## FVID2: message failed to deliver 0x%08x\n", status);
+ 		VPSSERR("send DQ event status 0x%08x\n", status);
+ 		return -EINVAL;
+ 	} else {
+-		//printk("## FVID2: message reception ok 0x%08x\n");
++		//VPSSDBG("## FVID2: message reception ok 0x%08x\n");
+ 		do_gettimeofday(&stime);
+ 		etime = stime;
+ 		while (fctrl->fdqprms->returnvalue ==
+ 			VPS_FVID2_M3_INIT_VALUE) {
+-			//printk("## FVID2: in reception loop\n");
++			//VPSSDBG("## FVID2: in reception loop\n");
+ 			usleep_range(100, 300);
+ 			/*time out check*/
+ 			if (vps_timeout) {
+@@ -646,7 +646,7 @@
+ 		}
+ 	}
+ 
+-	//printk("## FVID2: dequeue status from M3 %u within %u ms\n",
++	//VPSSDBG("## FVID2: dequeue status from M3 %u within %u ms\n",
+ 		//fctrl->fdqprms->returnvalue, td);
+ 	VPSSDBG("dequeue event return %d within %d ms\n",
+ 		fctrl->fdqprms->returnvalue,

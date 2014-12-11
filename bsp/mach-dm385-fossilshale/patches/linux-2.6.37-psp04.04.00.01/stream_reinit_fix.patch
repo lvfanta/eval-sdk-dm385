@@ -1,0 +1,27 @@
+Index: kernel/linux-2.6.37-psp04.04.00.01/drivers/video/ti81xx/vpss/capt.c
+===================================================================
+--- kernel.orig/linux-2.6.37-psp04.04.00.01/drivers/video/ti81xx/vpss/capt.c	2014-12-05 11:20:41.742547789 -0600
++++ kernel/linux-2.6.37-psp04.04.00.01/drivers/video/ti81xx/vpss/capt.c	2014-12-05 11:52:53.934641302 -0600
+@@ -376,11 +376,14 @@
+ 	int r = 0;
+ 
+ 	VPSSDBG("stop capture%d\n", cctrl->capt_num);
++	printk("## CAPT: INSIDE CAPTURE_STOP\n");
+ 
+ 	if ((cctrl == NULL) || (cctrl->handle == NULL))
+ 		return -EINVAL;
+ 	if (cctrl->isstarted) {
++		printk("## CAPT: trying to stop\n");
+ 		r = vps_fvid2_stop(cctrl->handle, NULL);
++		printk("## CAPT: stop result is %d\n", r);
+ 		if (!r) {
+ 			cctrl->isstarted = false;
+ 			/*capture_print_status(cctrl);*/
+@@ -725,6 +728,7 @@
+ {
+ 	int r = 0;
+ 
++	printk("## CAPT: check stream started %d\n",cctrl->isstarted);
+ 	if (cctrl == NULL || cctrl->isstarted)
+ 		r = -EINVAL;
+ 
