@@ -2,5 +2,3 @@ configuration_for_sdk.patch
 uboot_env_in_sd_card.patch
 skip_env_on_sd_boot.patch
 iss_clock_speed.patch
-boot_enviroment_variables.patch
-
