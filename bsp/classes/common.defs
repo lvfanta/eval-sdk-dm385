@@ -73,7 +73,7 @@
 #! <ul>
 #! <li> <b>DOWNLOADS</b>: Variable that has a list of directories to check for downloads separated by spaces. <br>Default: "/opt/ridgerun/downloads $(DEVDIR)/downloads"</li> 
 #!
-#! <li> <b>DOWNLOAD_SERVER</b>: Download server from which to download missing packages within apps. Default "https://www.ridgerun.com/packages"</li> 
+#! <li> <b>DOWNLOAD_SERVER</b>: Download server from which to download missing packages within apps. Default "https://packages.ridgerun.com/"</li>
 #!
 #! <li> <b>APPS_CFLAGS</b>: Flags passed to the C compiler. <br>Default: "$(CFLAGS) -I$(FSDEVROOT)/usr/include -I$(FSDEVROOT)/include"</li> 
 #!
@@ -166,8 +166,8 @@ APPS_LDFLAGS?=$(LDFLAGS) -L$(FSDEVROOT)/usr/lib -L$(FSDEVROOT)/lib
 #Download logic
 # DOWNLOADS has a list of directories to check for downloads separated by spaces
 DOWNLOADS ?= /opt/ridgerun/downloads $(DEVDIR)/downloads
-DOWNLOAD_SERVER = https://www.ridgerun.com/packages
-
+DOWNLOAD_SERVER = https://packages.ridgerun.com/
+ 
 #########################################################
 # Private variables, do not include in user documentation
 #########################################################
